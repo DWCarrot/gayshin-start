@@ -1,0 +1,28 @@
+[
+    {
+        "name": "Provider1",
+        "priority": 3,
+        "type": "clash",
+        "url": "https://api.subscribe1",
+        "file": null,
+        "use_rules": true,
+        "PROXY": "Proxies",
+        "ignore": true
+    },
+    {
+        "name": "Provider2",
+        "priority": 7,
+        "type": "vmess",
+        "url": "https://api.subscribe2/sub",
+        "use_rules": false,
+        "PROXY": "🚀 节点选择",
+        "ignore": true
+    },
+    {
+        "name": "Provider3",
+        "priority": 12,
+        "type": "clash",
+        "file": "./static_config.yml",
+        "use_rules": false
+    }
+]

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Clash Service
+After=network.target
+
+[Service]
+Type=simple
+User=%vpnuser%
+Restart=on-abort
+ExecStart=%clash_dir%/%clash_exe% -d %clash_dir%
+ExecStartPre=-/bin/bash %clash_dir%/clash.subscribe.sh
+
+[Install]
+WantedBy=multi-user.target
