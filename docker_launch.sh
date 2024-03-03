@@ -4,7 +4,7 @@ echo "#### Update Subscribes ####"
 
 python3 ./scripts/main.py \
     --timeout 15000 \
-    --cache ../cache \
+    --cache ../subscribe_cache \
     --template ./templates/config.template.yaml \
     --target-type clash \
     -Dallow_lan:bool=true \

@@ -12,7 +12,7 @@ fi
     --target-type clash \
     $ARG_NO_UPDATE \
     -Dallow_lan:bool=true \
-    -Dweb_host=0.0.0.0:%ctrl_port% \
+    -Dweb_host=%ctrl_host% \
     -Dweb_root=%clash_dir%/metacubexd \
     -Dweb_secret=%ctrl_passwd% \
     -Ddns_host=0.0.0.0:8853 \

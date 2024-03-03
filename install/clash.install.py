@@ -10,18 +10,19 @@ def read_input(prompt: str, default: str) -> str:
     return value
 
 def install(root: str, install_log: str):
+    print('># install clash service start')
     vpnuser = read_input('execute user name [{}]: ', 'vpnuser')
     clash_dir = read_input('clash directory [{}]: ', f'/home/{vpnuser}/clash')    
     clash_exe = read_input('clash executable [{}]: ', 'clash.meta')
     repo_dir = path.split(root)[0]
-    ctrl_port = read_input('control port [{}]: ', '9090')
+    ctrl_host = read_input('control host [{}] (if run for local it should be something like \'127.0.0.1:9090\'): ', '0.0.0.0:9090')
     ctrl_passwd = read_input('control password [{}]: ', '')
     variables = dict(
         clash_dir=path.abspath(clash_dir),
         clash_exe=clash_exe,
         vpnuser=vpnuser,
         repo_dir=repo_dir,
-        ctrl_port=ctrl_port,
+        ctrl_host=ctrl_host,
         ctrl_passwd=ctrl_passwd
     )
     print('variables:', variables)
@@ -65,6 +66,9 @@ def install(root: str, install_log: str):
     print(f'sudo cp {ofile_name_clash_service} /usr/local/lib/systemd/system/')
     print(f'sudo cp {ofile_name_clash_timer} /usr/local/lib/systemd/system/')
     print(f'sudo systemctl enable clash.service')
+
+    print('')
+    print('># install clash service end')
 
 def uninstall(install_log: str):
     from json import load
