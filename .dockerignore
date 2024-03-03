@@ -1,5 +1,6 @@
 *.md
 install/
+templates/  # use outer templates, this is just for example
 Dockerfile
 
 

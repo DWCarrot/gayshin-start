@@ -1,13 +1,11 @@
 import sys
 from os import path
 from json import dump, load
-from util import template
+from shutil import copyfile
+from util import template, read_input, read_confirm
 
-def read_input(prompt: str, default: str) -> str:
-    value = input(prompt.format(default))
-    if not value:
-        return default
-    return value
+
+
 
 def install(root: str, install_log: str):
     print('># install clash service start')
@@ -56,7 +54,15 @@ def install(root: str, install_log: str):
     print('># service shell write to', ofile_name)
     ofile_name_clash_shell = ofile_name
     
-    from json import dump
+    print('># copy template file')
+    ifile_name = path.join(repo_dir, 'templates', 'config.template.example.yaml')
+    ofile_name = path.join(clash_dir, 'config.template.yaml')
+    if read_confirm(f'copy {ifile_name} to {ofile_name}? [y/N] '):
+        copyfile(ifile_name, ofile_name)
+        print('># template file copied')
+
+    
+
     with open(install_log, 'w') as log:
         dump(variables, log)
 
@@ -71,7 +77,6 @@ def install(root: str, install_log: str):
     print('># install clash service end')
 
 def uninstall(install_log: str):
-    from json import load
     with open(install_log, 'r') as log:
         variables = load(log)
     print('># uninstall operations')

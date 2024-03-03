@@ -1,6 +1,15 @@
 
 from io import TextIOWrapper
 
+def read_input(prompt: str, default: str) -> str:
+    value = input(prompt.format(default))
+    if not value:
+        return default
+    return value
+
+def read_confirm(prompt: str) -> bool:
+    value = input(prompt)
+    return value.lower() in ('y', 'yes')
 
 def template(ifile: TextIOWrapper, ofile: TextIOWrapper, **kwargs) -> None:
     """
