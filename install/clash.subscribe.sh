@@ -9,6 +9,7 @@ fi
     --timeout 15000 \
     --cache %clash_dir%/subscribe_cache \
     --template %clash_dir%/config.template.yaml \
+    --output %clash_dir%/config.yaml \
     --target-type clash \
     $ARG_NO_UPDATE \
     -Dallow_lan:bool=true \
