@@ -225,7 +225,10 @@ class Info(object):
                 self.proxy_groups_other[g.name] = g
             else:
                 self.proxy_groups_general[category] = g
-        self.proxy_groups_general[GeneralGroup._GLOBAL] = reader.get_all_proxies(GeneralGroup._GLOBAL.value)
+        if len(self.proxy_groups_general) == 0:
+            category = group_info.get('*')
+            if category is not None:
+                self.proxy_groups_general[category] = reader.get_all_proxies(category.value)
         # self.rules
         rules_root_raw = reader.get_rules(None)
         self.rules = {}
@@ -320,8 +323,10 @@ def merge(data: List[Info]) -> Tuple[List[Proxy], List[ProxyGroup], Dict[str, Li
                 else:
                     old_rules.extend(rs)
     proxies_list = list(proxies.values())
+    proxies_list.sort(key=lambda x: x.name)
     proxy_groups_list = list(proxy_groups_general.values())
     proxy_groups_list.extend(proxy_groups_other.values())
+    proxy_groups_list.sort(key=lambda x: x.name)
     rules = rules #TODO: filter rules
     return (proxies_list, proxy_groups_list, rules)
 
