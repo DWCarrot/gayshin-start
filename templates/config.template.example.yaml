@@ -2,7 +2,7 @@ mixed-port: 1080
 allow-lan: !var ${allow_lan:bool}=false
 log-level: info
 mode: rule
-external-controller: 0.0.0.0:9090
+external-controller: 127.0.0.1:9090
 external-ui: ./metacubexd
 secret: 'replace_with_secret'
 tun:

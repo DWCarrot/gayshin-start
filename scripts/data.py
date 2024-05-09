@@ -62,8 +62,18 @@ class ProxyGroup(object):
             for i in range(len(proxies)):
                 proxies[i] = modifier(proxies[i])
 
+    def rectify(self) -> None:
+        proxies = self.inner['proxies']
+        if proxies is not None:
+            proxies.sort()
+
     def __repr__(self) -> str:
         return self.inner.__repr__()
+    
+    def copy(self, name: str):
+        new_inner = self.inner.copy()
+        new_inner['name'] = name
+        return ProxyGroup(new_inner)
 
 
 class RuleType(Enum):
@@ -293,11 +303,13 @@ def merge(data: List[Info]) -> Tuple[List[Proxy], List[ProxyGroup], Dict[str, Li
             if old_p is None:
                 proxies[p.name] = p
         # merge proxy groups: keep larger priority and merge proxies
+        total_proxies = None
         for category, g in info.proxy_groups_general.items():
             if category == GeneralGroup._GLOBAL:
                 old_g = proxy_groups_other.get(g.name)
                 if old_g is None:
                     proxy_groups_other[g.name] = g
+                total_proxies = g.copy(f'[{info.name}]')
             else:
                 old_g = proxy_groups_general.get(category)
                 if old_g is None:
@@ -309,6 +321,11 @@ def merge(data: List[Info]) -> Tuple[List[Proxy], List[ProxyGroup], Dict[str, Li
                         old_g_proxies = set(old_g_proxies)
                         old_g_proxies.update(g_proxies)
                         old_g.inner['proxies'] = list(old_g_proxies)
+                if total_proxies is None and category == GeneralGroup.PROXY:
+                    total_proxies = g.copy(f'[{info.name}]')
+        # add general group to proxy groups
+        if total_proxies is not None:
+            proxy_groups_other[total_proxies.name] = total_proxies
         # merge other proxy groups: keep larger priority
         for name, g in info.proxy_groups_other.items():
             old_g = proxy_groups_other.get(g.name)
@@ -327,6 +344,8 @@ def merge(data: List[Info]) -> Tuple[List[Proxy], List[ProxyGroup], Dict[str, Li
     proxy_groups_list = list(proxy_groups_general.values())
     proxy_groups_list.extend(proxy_groups_other.values())
     proxy_groups_list.sort(key=lambda x: x.name)
+    for proxy_group in proxy_groups_list:
+        proxy_group.rectify()
     rules = rules #TODO: filter rules
     return (proxies_list, proxy_groups_list, rules)
 
