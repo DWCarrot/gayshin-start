@@ -9,6 +9,7 @@ from util import template, read_input, read_confirm
 
 def install(root: str, install_log: str):
     print('># install clash service start')
+    python_exe = read_input('execute python [{}]: ', '/usr/bin/python3')
     vpnuser = read_input('execute user name [{}]: ', 'vpnuser')
     clash_dir = read_input('clash directory [{}]: ', f'/home/{vpnuser}/clash')    
     clash_exe = read_input('clash executable [{}]: ', 'clash.meta')
@@ -16,6 +17,7 @@ def install(root: str, install_log: str):
     ctrl_host = read_input('control host [{}] (if run for local it should be something like \'127.0.0.1:9090\'): ', '0.0.0.0:9090')
     ctrl_passwd = read_input('control password [{}]: ', '')
     variables = dict(
+        python_exe=python_exe,
         clash_dir=path.abspath(clash_dir),
         clash_exe=clash_exe,
         vpnuser=vpnuser,

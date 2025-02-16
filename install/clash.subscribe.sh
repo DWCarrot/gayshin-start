@@ -5,7 +5,7 @@ if [ "$1" = "local" ]; then
     ARG_NO_UPDATE="--no-update"
 fi
 
-/usr/bin/python3 %repo_dir%/scripts/main.py \
+%python_exe% %repo_dir%/scripts/main.py \
     --timeout 15000 \
     --cache %clash_dir%/subscribe_cache \
     --template %clash_dir%/config.template.yaml \
