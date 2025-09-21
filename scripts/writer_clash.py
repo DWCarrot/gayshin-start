@@ -106,7 +106,7 @@ class ClashConfigWriter(IConfigWriter):
                     template_sub_rules = dict()
                     template['sub-rules'] = template_sub_rules
                 template_sub_rules[key] = [r.raw for r in v_rules]
-        dumper = Dumper(stream=ofile, encoding='utf-8')
+        dumper = Dumper(stream=ofile, encoding='utf-8', allow_unicode=True, sort_keys=False)
         try:
             dumper.open()
             dumper.represent(template)
