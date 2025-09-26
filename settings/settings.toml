@@ -1,0 +1,8 @@
+[[subscribe]]
+name = "flowercloud"
+url = "http://localhost:9000/FlowerCloud.yml"
+use-rules = true
+
+[[subscribe]]
+name = "neko-service"
+url = "http://localhost:9000/neko-service.base64"
