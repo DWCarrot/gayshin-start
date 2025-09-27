@@ -2,72 +2,15 @@ from argparse import Action, ArgumentParser
 from io import BytesIO, TextIOWrapper
 from os import makedirs, path
 from typing import Dict, Tuple
-from urllib import request
 from typing import Dict
 from io import TextIOWrapper
 from data import GeneralGroup, ISubscribeReader, IConfigWriter, Info, merge
 from json import load as json_load, dump as json_dump
 
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.114 Safari/537.36 Edg/103.0.1264.62'
-
-
-def download_config(url: str, timeout: int = 5000) -> Tuple[bytes, str]:
-    filename: str | None = None
-    req = request.Request(url)
-    req.add_header('User-Agent', USER_AGENT)
-    resp = request.urlopen(req, timeout=timeout/1000.0)
-    content_disposition = [p.strip() for p in resp.getheader('Content-Disposition', default='').split(';')]
-    if len(content_disposition) >= 2 and content_disposition[0] == "attachment":
-        for kv in content_disposition[1:]:
-            q = kv.split('=', 1)
-            if len(q) == 2 and q[0] == 'filename':
-                filename = q[1]
-                break
-    raw = resp.read()
-    return raw, filename
-
-
-class DynamicLoad:
-
-    exts: Dict[str, str]
-    readers: Dict[str, str | ISubscribeReader]
-    writers: Dict[str, str | IConfigWriter]
-
-    def __init__(self):
-        self.readers = {
-            'clash': 'reader_clash:ClashSubscribeReader',
-            'vmess': 'reader_vmess:VmessSubscribeReaderSimple',
-        }
-        self.writers = {
-            'clash': 'writer_clash:ClashConfigWriter',
-        }
-
-    def get_reader(self, type: str) -> ISubscribeReader:
-        reader_class = self.readers.get(type)
-        if reader_class is None:
-            return None
-        if isinstance(reader_class, str):
-            module_name, class_name = reader_class.split(':', 2)
-            module = __import__(module_name, globals(), locals(), [class_name], 0)
-            reader_class = getattr(module, class_name)
-            self.readers[type] = reader_class
-        return reader_class()
-    
-    def get_writer(self, name: str) -> IConfigWriter:
-        writer_class = self.writers.get(name)
-        if writer_class is None:
-            return None
-        if isinstance(writer_class, str):
-            module_name, class_name = writer_class.split(':', 2)
-            module = __import__(module_name, globals(), locals(), [class_name], 0)
-            writer_class = getattr(module, class_name)
-            self.writers[name] = writer_class
-        return writer_class()
+from utils import DynamicLoad, download_config
 
 
 class SubscribeItem:
-
-    
 
     name: str
     priority: int
@@ -240,6 +183,10 @@ if __name__ == '__main__':
         print(item)
 
     dl = DynamicLoad()
+    dl.register_reader('clash', 'reader_clash:ClashSubscribeReader')
+    dl.register_reader('subscribe', 'reader_subs:SubscribeReaderSimple')
+    dl.register_writer('clash', 'writer_clash:ClashConfigWriter')
+
     data = []
     for item in sub_items:
         if item.ignore:

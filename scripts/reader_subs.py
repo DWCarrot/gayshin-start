@@ -115,7 +115,7 @@ def record_cvt_ss(url: str):
             proxy['plugin-opts'] = _plugin_opts
     return proxy
 
-class VmessSubscribeReaderSimple(ISubscribeReader):
+class SubscribeReaderSimple(ISubscribeReader):
 
     inner: List[Dict]
 

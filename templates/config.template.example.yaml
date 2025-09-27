@@ -1,12 +1,12 @@
 mixed-port: 1080
-allow-lan: !var ${allow_lan:bool}=false
+allow-lan:  {{ allow_lan | default(false)}}
 log-level: info
 mode: rule
 external-controller: 127.0.0.1:9090
 external-ui: ./metacubexd
 secret: 'replace_with_secret'
 tun:
-  enable: !var ${enable_tun:bool}=false
+  enable: {{ tun_enable | default(false) }}
   stack: gvisor # or system
   dns-hijack:
     - any:53 # when `fake-ip-range` is 198.18.0.1/16, should hijack 198.18.0.2:53
@@ -170,3 +170,12 @@ dns:
     - "*.mcdn.bilivideo.cn"
     - +.media.dssott.com
     - +.pvp.net
+
+proxies:
+  - name: "__PROXY_PLACEHOLDER__"
+
+proxy-groups:
+  - name: "__PROXY_GROUP_PLACEHOLDER__"
+
+rules:
+  - "__RULE_PLACEHOLDER__"

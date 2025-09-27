@@ -1,111 +1,58 @@
 from io import BufferedIOBase, BytesIO, StringIO
-from typing import Dict, List
+from typing import Dict, List, Optional
 from data import IConfigWriter, Proxy, ProxyGroup, Rule
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError as e:
     print('[warning] unable to load libyaml; use python module instead', e)
     from yaml import Loader, Dumper
+from jinja2 import Template
 
+from utils import insert_in_list
 
-def _variable_constructor(loader, node):
-    key = loader.construct_python_str(node)
-    if key.startswith('$'):
-        _key = key[1:]
-        _type = None
-        _default = None
-        if _key.startswith('{'):
-            sp = _key.find('}')
-            if sp < 0:
-                return key
-            _rest = _key[sp+1:]
-            _key = _key[1:sp]
-            sp = _key.find(':')
-            if sp > 0:
-                _type = _key[sp+1:]
-                _key = _key[:sp]
-            if _rest.startswith('='):
-                _default = _rest[1:]
-                if _type is None:
-                    _type = 'str'
-        if _type == 'bool':
-            if _default == '1' or _default.lower() == 'true':
-                _default = True
-            elif _default == '0' or _default.lower() == 'false':
-                _default = False
-            else:
-                _default = None
-            _type = bool
-        elif _type == 'int':
-            try:
-                _default = int(_default)
-            except:
-                _default = None
-            _type = int
-        elif _type == 'float':
-            try:
-                _default = float(_default)
-            except:
-                _default = None
-            _type = float
-        elif _type == 'str':
-            _type = str
-        
-        _variables = loader.__patch__variables
-        value = _variables.get(_key)
-        if value is None or (_type is not None and not isinstance(value, _type)):
-            value = _default
-            return value
-        return value
-    return key
-
+PROXY_PLACEHOLDER = '__PROXY_PLACEHOLDER__'
+PROXY_GROUP_PLACEHOLDER = '__PROXY_GROUP_PLACEHOLDER__'
+RULE_PLACEHOLDER = '__RULE_PLACEHOLDER__'
 
 class ClashConfigWriter(IConfigWriter):
 
-    _template: bytes
+    _template: Optional[Template]
 
     def __init__(self):
         super().__init__()
         self._template = None
-        Loader.add_constructor('!var', _variable_constructor)
 
     def template(self, ifile: BufferedIOBase) -> None:
-        self._template = ifile.read()
+        content = ifile.read().decode('utf-8')
+        self._template = Template(content)
 
     def write(self, ofile: BufferedIOBase, proxies: List[Proxy], proxy_groups: List[ProxyGroup], rules: Dict[str, List[Rule]], **kwargs) -> None:
-        loader = Loader(BytesIO(self._template))
-        setattr(loader, '__patch__variables', kwargs)
+        if self._template is None:
+            raise ValueError('template not initialized')
+        content = self._template.render(**kwargs)
+        loader = Loader(stream=content)
         template = None
         try:
             template = loader.get_single_data()
         finally:
             loader.dispose()
         template_proxies = template.get('proxies')
-        if template_proxies is None:
-            template_proxies = []
-            template['proxies'] = template_proxies
-        for p in proxies:
-            template_proxies.append(p.inner)
+        template['proxies'] = insert_in_list(template_proxies, lambda x: x.get('name') == PROXY_PLACEHOLDER, [p.inner for p in proxies])
         template_proxy_groups = template.get('proxy-groups')
-        if template_proxy_groups is None:
-            template_proxy_groups = []
-            template['proxy-groups'] = template_proxy_groups
-        for g in proxy_groups:
-            template_proxy_groups.append(g.inner)
+        template['proxy-groups'] = insert_in_list(template_proxy_groups, lambda x: x.get('name') == PROXY_GROUP_PLACEHOLDER, [pg.inner for pg in proxy_groups])
         template_rules = template.get('rules')
-        if template_rules is None:
-            template_rules = []
-            template['rules'] = template_rules
         template_sub_rules = template.get('sub-rules')
+        rules_temp = list()
         for (key, v_rules) in rules.items():
             if not key:
                 for r in v_rules:
-                    template_rules.append(r.raw)
+                    rules_temp.append(r.raw)
             else:
                 if template_sub_rules is None:
                     template_sub_rules = dict()
                     template['sub-rules'] = template_sub_rules
                 template_sub_rules[key] = [r.raw for r in v_rules]
+        template['rules'] = insert_in_list(template_rules, lambda x: x == RULE_PLACEHOLDER, rules_temp)
         dumper = Dumper(stream=ofile, encoding='utf-8', allow_unicode=True, sort_keys=False)
         try:
             dumper.open()

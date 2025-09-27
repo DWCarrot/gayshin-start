@@ -2,19 +2,19 @@ import sys
 from os import path
 from json import dump, load
 from shutil import copyfile
-from util import template, read_input, read_confirm
+from utils import template, read_input, read_confirm
 
 
 
 
-def install(root: str, install_log: str):
+def install_clash(root: str, install_log: str):
     print('># install clash service start')
     python_exe = read_input('execute python [{}]: ', '/usr/bin/python3')
     vpnuser = read_input('execute user name [{}]: ', 'vpnuser')
     clash_dir = read_input('clash directory [{}]: ', f'/home/{vpnuser}/clash')    
     clash_exe = read_input('clash executable [{}]: ', 'clash.meta')
     repo_dir = path.split(root)[0]
-    ctrl_host = read_input('control host [{}] (if run for local it should be something like \'127.0.0.1:9090\'): ', '0.0.0.0:9090')
+    ctrl_host = read_input('control host [{}] (if run for local it should be something like \'127.0.0.1:9090\'): ', '127.0.0.1:9090')
     ctrl_passwd = read_input('control password [{}]: ', '')
     variables = dict(
         python_exe=python_exe,
@@ -81,12 +81,17 @@ def install(root: str, install_log: str):
 def uninstall(install_log: str):
     with open(install_log, 'r') as log:
         variables = load(log)
+    target = ''
+    directory = ''
+    if 'clash_dir' in variables:
+        target = 'clash'
+        directory = variables['clash_dir']
     print('># uninstall operations')
     print('')
     print(f'sudo systemctl disable clash.service')
     print(f'sudo rm /usr/local/lib/systemd/system/clash.service')
     print(f'sudo rm /usr/local/lib/systemd/system/clash.timer')
-    print(f'rm -r {variables["clash_dir"]}')
+    print(f'rm -r {directory}')
 
 
 if __name__ == '__main__':
@@ -94,6 +99,9 @@ if __name__ == '__main__':
     install_log = path.join(root, '~install.log')
     args = sys.argv[1:]
     if len(args) == 0 or args[0] in ('install', 'i'):
-        install(root, install_log)
+        if len(args) == 0 or len(args) == 1 or args[1] == 'clash':
+            install_clash(root, install_log)
+        elif len(args) > 1 and args[1] == 'singbox':
+            print('singbox not implemented yet')
     elif len(args) > 0 and args[0] in ('uninstall', 'u'):
         uninstall(install_log)

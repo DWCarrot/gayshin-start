@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from io import TextIOWrapper, BufferedIOBase
 import json
-from typing import BinaryIO, Callable, Dict, List, Set, Tuple
+from typing import BinaryIO, Callable, Dict, List, Optional, Set, Tuple
 
 
 class Proxy(object):
@@ -214,7 +214,7 @@ class Info(object):
     proxy_groups_other: Dict[str, ProxyGroup]  # proxy group name -> proxy group
     rules: Dict[str, List[Rule]] # rule name / root -> rule
 
-    def __init__(self, reader: ISubscribeReader, name: str, priority: int, use_rules: bool, group_info: Dict[str, GeneralGroup] | None = None):
+    def __init__(self, reader: ISubscribeReader, name: str, priority: int, use_rules: bool, group_info: Optional[Dict[str, GeneralGroup]] = None):
         self.name = name
         self.priority = priority
         self.use_rules = use_rules

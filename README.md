@@ -6,8 +6,9 @@
 
 ### Requirements
 
-- python3.8 or above
+- python3.12 or above
 - PyYaml installed (`pip install PyYaml` or `apt install python3-yaml`)
+- Jinja2 installed (`pip install Jinja2` or `apt install python3-jinja2`)
 
 ### File Structure
 
@@ -20,7 +21,7 @@
 │   │   ├── *.service
 │   │   ├── *.timer
 │   │   ├── *.subscribe.sh
-│   │   ├── util.py
+│   │   ├── utils.py
 │   ├── scripts
 │   │   ├── *.py
 │   ├── templates
@@ -44,9 +45,9 @@
 - metacubexdb should be downloaded manually from gh-pages branch and rename to `metacubexdb`.
 - subscribe.json should be prepared with your own subscription information.
 - config.template.yaml should be prepared with your own configuration. the example is in `mihomo-start/templates/config.template.example.yaml`.
-  - variables can be used in config templates. using format like `!var ${<name>[:<type>]}[=default]` where the type should in `str int float bool`, default type is str and default value is `null`.
+  - variables can be used in config templates. ~~using format like `!var ${<name>[:<type>]}[=default]` where the type should in `str int float bool`, default type is str and default value is `null`.~~ using INJA format
 - put `mihomo-start` to corresponding directory 
-- run `mihomo-start/install/*.install.py` to install service and timer
+- run `mihomo-start/install/install.py i [<target>]` to install service and timer
   - follow the guide of `mihomo-start/install/*.install.py`. notice that value in `[ ]` means default and if you want to use default value, you can just press enter.
   - `<*>.subscribe.sh` ,  `<*>.service`, `<*>.timer` will be generated.
   - _for linux service_ copy service and timer to corresponding directory as `mihomo-start/install/*.install.py` guide at the end.
