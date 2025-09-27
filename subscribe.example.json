@@ -12,7 +12,7 @@
     {
         "name": "Provider2",
         "priority": 7,
-        "type": "vmess",
+        "type": "subscribe",
         "url": "https://api.subscribe2/sub",
         "use_rules": false,
         "PROXY": "🚀 节点选择",
