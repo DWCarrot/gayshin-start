@@ -1,4 +1,4 @@
-from io import BufferedIOBase
+from typing import BinaryIO, Optional
 from typing import Dict, List
 from data import ISubscribeReader, Proxy, ProxyGroup, Rule
 
@@ -19,8 +19,8 @@ class ClashSubscribeReader(ISubscribeReader):
     def get_cache_name(self, filename: str) -> str:
         return filename + '.yml'
 
-    def read(self, ifile: BufferedIOBase, is_cache: bool, ofile_cache: BufferedIOBase | None = None) -> None:
-        loader = Loader(ifile)
+    def read(self, ifile: BinaryIO, is_cache: bool, ofile_cache: Optional[BinaryIO] = None) -> None:
+        loader = Loader(ifile) # TODO: encoding?
         try:
             self.inner = loader.get_single_data()
         finally:
@@ -38,7 +38,13 @@ class ClashSubscribeReader(ISubscribeReader):
         proxies = self.inner.get('proxies')
         if proxies is None:
             return None
-        return [Proxy(p) for p in proxies]
+        result = list()
+        for p in proxies:
+            try:
+                result.append(Proxy(p))
+            except Exception as e:
+                print(f'>! invalid proxy: {p}', e)
+        return result
     
     def get_all_proxies(self, name: str) -> ProxyGroup:
         proxies = self.inner.get('proxies')
@@ -49,26 +55,35 @@ class ClashSubscribeReader(ISubscribeReader):
             'type': 'select',
             'proxies': [p['name'] for p in proxies]
         }
-        return ProxyGroup(inner)
+        try:
+            return ProxyGroup(inner)
+        except Exception as e:
+            print(f'>! invalid proxy group: {inner}', e)
+            return None
 
     def get_proxy_groups(self) -> List[ProxyGroup]:
         groups = self.inner.get('proxy-groups')
         if groups is None:
             return None
-        return [ProxyGroup(g) for g in groups]
+        result = list()
+        for g in groups:
+            try:
+                result.append(ProxyGroup(g))
+            except Exception as e:
+                print(f'>! invalid proxy group: {g}', e)
+        return result
 
-    def get_rules(self, name: str) -> List[Rule]:
-        rules = None
-        if not name:
-            rules = self.inner.get('rules')
-        else:
-            sub_rules = self.inner.get('sub-rules')
-            if sub_rules is None:
-                return None
-            rules = sub_rules.get(name)
+    def get_rules(self) -> List[Rule]:
+        rules = self.inner.get('rules')
         if rules is None:
             return None
-        return [Rule(r) for r in rules]
+        result = list()
+        for r in rules:
+            try:
+                result.append(Rule(r))
+            except Exception as e:
+                print(f'>! invalid rule: {r}', e)
+        return result
 
 # __main__
 #
@@ -100,7 +115,7 @@ if __name__ == '__main__':
         _value = arg[sp+1:]
         variables[GeneralGroup.__dict__[_name]] = _value
 
-    with open(ifile_name, 'r', encoding='utf-8') as ifile:
+    with open(ifile_name, 'rb') as ifile:
         reader = ClashSubscribeReader()
         reader.read(ifile)
         item = Info(reader, 'test', 1, True, variables)

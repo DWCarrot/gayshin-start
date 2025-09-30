@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from io import TextIOWrapper, BufferedIOBase
-import json
+from io import BufferedIOBase
 from typing import BinaryIO, Callable, Dict, List, Optional, Set, Tuple
 
 
@@ -19,6 +18,10 @@ class Proxy(object):
     @name.setter
     def name(self, name: str):
         self.inner['name'] = name
+
+    @property
+    def type(self) -> str:
+        return self.inner['type']
 
     def __repr__(self) -> str:
         return self.inner.__repr__()
@@ -80,22 +83,35 @@ class RuleType(Enum):
     DOMAIN = 'DOMAIN'
     DOMAIN_SUFFIX = 'DOMAIN-SUFFIX'
     DOMAIN_KEYWORD = 'DOMAIN-KEYWORD'
+    DOMAIN_WILDCARD = 'DOMAIN-WILDCARD'
+    DOMAIN_REGEX = 'DOMAIN-REGEX'
+    GEOSITE = 'GEOSITE'
     IP_CIDR = 'IP-CIDR'
     IP_CIDR6 = 'IP-CIDR6'
+    IP_SUFFIX = 'IP-SUFFIX'
+    IP_ASN = 'IP-ASN'
+    GEOIP = 'GEOIP'
+    SRC_GEOIP = 'SRC-GEOIP'
+    SRC_IP_ASN = 'SRC-IP-ASN'
+    SRC_IP_CIDR = 'SRC-IP-CIDR'
+    SRC_IP_SUFFIX = 'SRC-IP-SUFFIX'
     DST_PORT = 'DST-PORT'
     SRC_PORT = 'SRC-PORT'
-    PROCESS_NAME = 'PROCESS-NAME'
-    PROCESS_PATH = 'PROCESS-PATH'
-    LOGICAL_AND = 'AND'
-    LOGICAL_OR = 'OR'
-    LOGICAL_NOT = 'NOT'
-    GEOSITE = 'GEOSITE'
-    GEOIP = 'GEOIP'
+    IN_PORT = 'IN-PORT'
     IN_TYPE = 'IN-TYPE'
     IN_USER = 'IN-USER'
     IN_NAME = 'IN-NAME'
+    PROCESS_PATH = 'PROCESS-PATH'
+    PROCESS_PATH_REGEX = 'PROCESS-PATH-REGEX'
+    PROCESS_NAME = 'PROCESS-NAME'
+    PROCESS_NAME_REGEX = 'PROCESS-NAME-REGEX'
+    UID = 'UID'
     NETWORK = 'NETWORK'
+    DSCP = 'DSCP'
     RULE_SET = 'RULE-SET'
+    LOGICAL_AND = 'AND'
+    LOGICAL_OR = 'OR'
+    LOGICAL_NOT = 'NOT'
     SUB_RULE = 'SUB-RULE'
     MATCH = 'MATCH'
 
@@ -105,7 +121,8 @@ class Rule(object):
     type: RuleType
     match: str
     strategy: str
-    no_resolve: bool | None
+    no_resolve: Optional[bool]
+    #src: Optional[str]
 
     def __init__(self, raw: str):
         inside = 0
@@ -125,6 +142,8 @@ class Rule(object):
         else:
             raise ValueError('Invalid rule format')
         self.type = RuleType(parts[0])
+        if self.type in (RuleType.LOGICAL_AND, RuleType.LOGICAL_OR, RuleType.LOGICAL_NOT, RuleType.SUB_RULE):
+            raise ValueError(f'unimplemented rule type: {self.type}')
         if self.type == RuleType.MATCH:
             self.match = None
             self.strategy = parts[1]
@@ -161,7 +180,7 @@ class ISubscribeReader(ABC):
         pass
 
     @abstractmethod
-    def read(self, ifile: BufferedIOBase, is_cache: bool, ofile_cache: BufferedIOBase | None = None) -> None:
+    def read(self, ifile: BinaryIO, is_cache: bool, ofile_cache: Optional[BinaryIO] = None) -> None:
         pass
 
     @abstractmethod
@@ -177,7 +196,7 @@ class ISubscribeReader(ABC):
         pass
 
     @abstractmethod
-    def get_rules(self, name: str) -> List[Rule]:
+    def get_rules(self) -> List[Rule]:
         pass
 
 
@@ -188,11 +207,11 @@ class IConfigWriter(ABC):
         pass
 
     @abstractmethod
-    def template(self, ifile: BufferedIOBase) -> None:
+    def template(self, ifile: BinaryIO) -> None:
         pass
 
     @abstractmethod
-    def write(self, ofile: BufferedIOBase, proxies: List[Proxy], proxy_groups: List[ProxyGroup], rules: Dict[str, List[Rule]], **kwargs) -> None:
+    def write(self, ofile: BinaryIO, proxies: List[Proxy], proxy_groups: List[ProxyGroup], rules: List[Rule], **kwargs) -> None:
         pass
 
 
@@ -212,7 +231,7 @@ class Info(object):
     proxies: Dict[str, Proxy]   # proxy name -> proxy
     proxy_groups_general: Dict[GeneralGroup, ProxyGroup]  # general group -> proxy group name -> proxy group
     proxy_groups_other: Dict[str, ProxyGroup]  # proxy group name -> proxy group
-    rules: Dict[str, List[Rule]] # rule name / root -> rule
+    rules: List[Rule]
 
     def __init__(self, reader: ISubscribeReader, name: str, priority: int, use_rules: bool, group_info: Optional[Dict[str, GeneralGroup]] = None):
         self.name = name
@@ -240,13 +259,7 @@ class Info(object):
             if category is not None:
                 self.proxy_groups_general[category] = reader.get_all_proxies(category.value)
         # self.rules
-        rules_root_raw = reader.get_rules(None)
-        self.rules = {}
-        self.rules[''] = rules_root_raw
-        for r in rules_root_raw:
-            if r.type == RuleType.SUB_RULE:
-                sub_rules_raw = reader.get_rules(r.match)
-                self.rules[r.strategy] = sub_rules_raw
+        self.rules = reader.get_rules()
 
     def modify_by_name(self, prefix: str) -> None:
         # modify proxy name
@@ -282,19 +295,18 @@ class Info(object):
         for name, g in self.proxy_groups_other.items():
             g.modify_proxy(inner_modifier)
         # modify rule strategy
-        for name, rules in self.rules.items():
-            for r in rules:
-                r.strategy = inner_modifier(r.strategy)
+        for r in self.rules:
+            r.strategy = inner_modifier(r.strategy)
             #TODO: modify sub-rule name
 
-def merge(data: List[Info]) -> Tuple[List[Proxy], List[ProxyGroup], Dict[str, List[Rule]]]:
+def merge(data: List[Info]) -> Tuple[List[Proxy], List[ProxyGroup], List[Rule]]:
     # sort by priority from high to low
     data.sort(key=lambda x: x.priority)
     # merge
     proxies: Dict[str, Proxy] = {}   # proxy name -> proxy
     proxy_groups_general: Dict[GeneralGroup, ProxyGroup] = {}  # general group -> proxy group name -> proxy group
     proxy_groups_other: Dict[str, ProxyGroup] = {}  # proxy group name -> proxy group
-    rules: Dict[str, List[Rule]] = {} # rule name / root -> rule
+    rules: List[Rule] = [] # rule name / root -> rule
     # iterate
     for info in data:
         # merge proxies: keep larger priority
@@ -333,12 +345,7 @@ def merge(data: List[Info]) -> Tuple[List[Proxy], List[ProxyGroup], Dict[str, Li
                 proxy_groups_other[g.name] = g
         # merge rules: keep larger priority
         if info.use_rules:
-            for name, rs in info.rules.items():
-                old_rules = rules.get(name)
-                if old_rules is None:
-                    rules[name] = rs
-                else:
-                    old_rules.extend(rs)
+            rules.extend(info.rules)
     proxies_list = list(proxies.values())
     proxies_list.sort(key=lambda x: x.name)
     proxy_groups_list = list(proxy_groups_general.values())
@@ -346,7 +353,7 @@ def merge(data: List[Info]) -> Tuple[List[Proxy], List[ProxyGroup], Dict[str, Li
     proxy_groups_list.sort(key=lambda x: x.name)
     for proxy_group in proxy_groups_list:
         proxy_group.rectify()
-    rules = rules #TODO: filter rules
+    rules = rules  #TODO: filter rules
     return (proxies_list, proxy_groups_list, rules)
 
 

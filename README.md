@@ -9,6 +9,7 @@
 - python3.12 or above
 - PyYaml installed (`pip install PyYaml` or `apt install python3-yaml`)
 - Jinja2 installed (`pip install Jinja2` or `apt install python3-jinja2`)
+- pyjson5 installed (`pip install pyjson5`)
 
 ### File Structure
 

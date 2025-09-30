@@ -1,5 +1,4 @@
-from io import BufferedIOBase, BytesIO, StringIO
-from typing import Dict, List, Optional
+from typing import BinaryIO, Dict, List, Optional
 from data import IConfigWriter, Proxy, ProxyGroup, Rule
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -22,11 +21,11 @@ class ClashConfigWriter(IConfigWriter):
         super().__init__()
         self._template = None
 
-    def template(self, ifile: BufferedIOBase) -> None:
+    def template(self, ifile: BinaryIO) -> None:
         content = ifile.read().decode('utf-8')
         self._template = Template(content)
 
-    def write(self, ofile: BufferedIOBase, proxies: List[Proxy], proxy_groups: List[ProxyGroup], rules: Dict[str, List[Rule]], **kwargs) -> None:
+    def write(self, ofile: BinaryIO, proxies: List[Proxy], proxy_groups: List[ProxyGroup], rules: List[Rule], **kwargs) -> None:
         if self._template is None:
             raise ValueError('template not initialized')
         content = self._template.render(**kwargs)
@@ -41,18 +40,7 @@ class ClashConfigWriter(IConfigWriter):
         template_proxy_groups = template.get('proxy-groups')
         template['proxy-groups'] = insert_in_list(template_proxy_groups, lambda x: x.get('name') == PROXY_GROUP_PLACEHOLDER, [pg.inner for pg in proxy_groups])
         template_rules = template.get('rules')
-        template_sub_rules = template.get('sub-rules')
-        rules_temp = list()
-        for (key, v_rules) in rules.items():
-            if not key:
-                for r in v_rules:
-                    rules_temp.append(r.raw)
-            else:
-                if template_sub_rules is None:
-                    template_sub_rules = dict()
-                    template['sub-rules'] = template_sub_rules
-                template_sub_rules[key] = [r.raw for r in v_rules]
-        template['rules'] = insert_in_list(template_rules, lambda x: x == RULE_PLACEHOLDER, rules_temp)
+        template['rules'] = insert_in_list(template_rules, lambda x: x == RULE_PLACEHOLDER, [rule.raw for rule in rules])
         dumper = Dumper(stream=ofile, encoding='utf-8', allow_unicode=True, sort_keys=False)
         try:
             dumper.open()
@@ -77,6 +65,7 @@ class ClashConfigWriter(IConfigWriter):
 
 if __name__ == '__main__':
     from sys import argv
+    from io import StringIO
 
     args = argv[1:]
     if len(args) < 1:

@@ -1,5 +1,5 @@
 from io import BufferedIOBase, BytesIO, TextIOWrapper
-from typing import Dict, List, Optional
+from typing import BinaryIO, Dict, List, Optional
 from urllib.parse import parse_qs, unquote_plus, urlparse
 from data import ISubscribeReader, Proxy, ProxyGroup, Rule
 from base64 import b64decode
@@ -125,7 +125,7 @@ class SubscribeReaderSimple(ISubscribeReader):
     def get_cache_name(self, filename: str) -> str:
         return filename + '.txt'
 
-    def read(self, ifile: BufferedIOBase, is_cache: bool, ofile_cache: BufferedIOBase | None = None) -> None:
+    def read(self, ifile: BinaryIO, is_cache: bool, ofile_cache: Optional[BinaryIO] = None) -> None:
         links: List[str] = list()
         if not is_cache:
             raw = ifile.read()
@@ -168,5 +168,5 @@ class SubscribeReaderSimple(ISubscribeReader):
     def get_proxy_groups(self) -> List[ProxyGroup]:
         return []
 
-    def get_rules(self, name: str) -> List[Rule]:
+    def get_rules(self) -> List[Rule]:
         return []

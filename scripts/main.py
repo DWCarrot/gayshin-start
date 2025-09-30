@@ -186,6 +186,7 @@ if __name__ == '__main__':
     dl.register_reader('clash', 'reader_clash:ClashSubscribeReader')
     dl.register_reader('subscribe', 'reader_subs:SubscribeReaderSimple')
     dl.register_writer('clash', 'writer_clash:ClashConfigWriter')
+    dl.register_writer('singbox', 'writer_singbox:SingboxConfigWriter')
 
     data = []
     for item in sub_items:
@@ -210,7 +211,7 @@ if __name__ == '__main__':
     print('')
     ROOT = ''
     proxies, proxy_groups, rules = merge(data)
-    print(f'># merged into: proxies[{len(proxies)}], proxy_groups[{len(proxy_groups)}], rules[{len(rules[ROOT])}]')
+    print(f'># merged into: proxies[{len(proxies)}], proxy_groups[{len(proxy_groups)}], rules[{len(rules)}]')
 
     print('')
     writer = dl.get_writer(args.target_type)
