@@ -19,7 +19,7 @@ def template(ifile: TextIOWrapper, ofile: TextIOWrapper, **kwargs) -> None:
         new_line = None
         last = 0
         i = line.find('%', last)
-        while i > 0:
+        while i >= 0:
             j = line.find('%', i + 1)
             if j <= i:
                 raise ValueError('Invalid template variable: empty')
