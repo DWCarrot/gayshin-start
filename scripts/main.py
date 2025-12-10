@@ -18,6 +18,7 @@ class SubscribeItem:
     url: str
     file: str
     use_rules: bool
+    update_interval: int
     general_group: Dict[str, GeneralGroup]
     ignore: bool
 
@@ -28,7 +29,7 @@ class SubscribeItem:
         self.url = raw.get('url', '')
         self.file = raw.get('file', '')
         self.use_rules = raw.get('use_rules', False)
-        self.update_interval = raw.get('update_interval', 0)
+        self.update_interval = 'update_interval' in raw and int(raw['update_interval']) or 0
         self.general_group = {}
         for key in GeneralGroup:
             value = raw.get(key.name)
