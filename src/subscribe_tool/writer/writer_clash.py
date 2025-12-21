@@ -1,13 +1,21 @@
+"""Clash config writer implementation"""
+
+import logging
 from typing import BinaryIO, Dict, List, Optional
-from data import IConfigWriter, Proxy, ProxyGroup, Rule
+
+from . import IConfigWriter
+from ..data import Proxy, ProxyGroup, Rule
+
+logger = logging.getLogger(__name__)
+
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError as e:
-    print('[warning] unable to load libyaml; use python module instead', e)
+    logger.warning(f'unable to load libyaml; use python module instead: {e}')
     from yaml import Loader, Dumper
 from jinja2 import Template
 
-from utils import insert_in_list
+from ..utils import insert_in_list
 
 PROXY_PLACEHOLDER = '__PROXY_PLACEHOLDER__'
 PROXY_GROUP_PLACEHOLDER = '__PROXY_GROUP_PLACEHOLDER__'
@@ -20,6 +28,11 @@ class ClashConfigWriter(IConfigWriter):
     def __init__(self):
         super().__init__()
         self._template = None
+
+    def get_target_file_name(self, filename: str) -> str:
+        if not filename.lower().endswith('.yaml') and not filename.lower().endswith('.yml'):
+            return f'{filename}.yaml'
+        return filename
 
     def template(self, ifile: BinaryIO) -> None:
         content = ifile.read().decode('utf-8')
@@ -48,61 +61,3 @@ class ClashConfigWriter(IConfigWriter):
             dumper.close()
         finally:
             dumper.dispose()
-
-
-
-# __main__
-#
-# args[0]:      template file name
-# args[1..n]:   variables "<name>:<type>=<value>"; type in bool,int,float,str,null
-#                   enable_tun:bool=true
-#                   port:int=10000
-#                   qb:null=
-#
-# example:
-#   python writer_clash.py config.template.yaml "enable_tun:bool=true" "port:int=10086"
-#
-
-if __name__ == '__main__':
-    from sys import argv
-    from io import StringIO
-
-    args = argv[1:]
-    if len(args) < 1:
-        exit()
-    ifile_name = args[0]
-    variables = dict()
-    args = args[1:]
-    TYPE_MAP = {
-        "bool": bool,
-        "int": int,
-        "float": float,
-        "str": str,
-        "null": None
-    }
-    for i, arg in enumerate(args):
-        sp = arg.find('=')
-        if sp < 0:
-            args = args[i:]
-            break
-        sp0 = arg.index(':', 0, sp)
-        _name = arg[:sp0]
-        _type = arg[sp0+1:sp]
-        _value = arg[sp+1:]
-        _type = TYPE_MAP.get(_type)
-        if _type is None:
-            _value = None
-        else:
-            _value = _type(_value)
-        variables[_name] = _value
-    print('variables:', variables)
-
-    
-    writer = ClashConfigWriter()
-    with open(ifile_name, 'r', encoding='utf-8') as ifile:
-        writer.template(ifile)
-    
-    s = StringIO()
-    writer.write(s, [], [], {}, **variables)
-    print(s.getvalue())
-        

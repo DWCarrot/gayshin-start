@@ -6,8 +6,8 @@ After=network.target
 Type=simple
 User=%vpnuser%
 Restart=on-abort
-ExecStart=%clash_dir%/%clash_exe% -d %clash_dir%
-ExecStartPre=-/bin/bash %clash_dir%/clash.subscribe.sh
+ExecStart=%clash_exe% -d %clash_dir%
+ExecStartPre=-%python_exe% -m subscribe_tool.main -c %config_file% regenerate
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subscribe-tool"
+version = "0.4.0"
+description = "A simple subscribe tool for proxy management"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+
+dependencies = [
+    "PyYAML>=6.0",
+    "Jinja2>=3.1",
+    "pyjson5>=2.0",
+    "tzlocal>=5.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    
+]
+
+[project.scripts]
+subscribe-tool = "subscribe_tool.main:main"
+
+[tool.setuptools]
+packages = ["subscribe_tool"]
+package-dir = {"" = "src"}
+

@@ -1,13 +1,20 @@
+"""Singbox config writer implementation"""
+
+import logging
 from io import TextIOWrapper
 from typing import Any, BinaryIO, Dict, List, Optional, Set, Tuple
 from collections import OrderedDict
 
 from jinja2 import Template
-from data import IConfigWriter, Proxy, ProxyGroup, Rule, RuleType
+
+from . import IConfigWriter
+from ..data import Proxy, ProxyGroup, Rule, RuleType
 from pyjson5 import loads as json5_loads
 from json import dump as json_dump
 
-from utils import insert_in_list
+from ..utils import insert_in_list
+
+logger = logging.getLogger(__name__)
 
 CLASH2SINGBOX_ALLOWED_RULETYPES: Dict[RuleType, str] = {
     RuleType.DOMAIN: 'domain',
@@ -110,8 +117,7 @@ class Clash2SingboxTransformer:
         for rule in rules:
             tgt = CLASH2SINGBOX_ALLOWED_RULETYPES.get(rule.type)
             if tgt is None:
-                # TODO: log
-                print(f'>! rule type {rule.type} is not supported in singbox, skipped')
+                logger.warning(f'rule type {rule.type} is not supported in singbox, skipped')
                 continue
             target = rule.strategy
             rule_grouped_items = rules_grouped.get(target)
@@ -122,7 +128,7 @@ class Clash2SingboxTransformer:
         result = list()
         match_rule = None
         for outbound, rules in rules_grouped.items():
-            print(f'> {len(rules)} rules to {outbound}')
+            logger.debug(f'{len(rules)} rules to {outbound}')
             group_domain: Optional[Dict[str, List]] = None # field -> values # domain || domain_suffix || domain_keyword || domain_regex || [geosite] || [geoip] || ip_cidr || ip_is_private
             group_geosite: Optional[Dict[str, Any]] = None # GEO-KEY -> value geosite
             group_geoip: Optional[Dict[str, Any]] = None # GEO-KEY -> value # geoip
@@ -187,10 +193,10 @@ class Clash2SingboxTransformer:
                         values.append(rule.match)
                     elif rule.type == RuleType.MATCH:
                         if match_rule is not None:
-                            print(f'>! multiple match rules found, only the first one is kept, others are skipped')
+                            logger.warning(f'multiple match rules found, only the first one is kept, others are skipped')
                         match_rule = rule
                     else:    
-                        print(f'>! rule type {rule.type} unimplemented, skipped')
+                        logger.warning(f'rule type {rule.type} unimplemented, skipped')
             if group_domain is not None:
                 obj = self._gen_rule(group_domain, outbound)
                 result.append(obj)
@@ -413,7 +419,7 @@ class Clash2SingboxTransformer:
         if self.geoip.get(geo_key) is None:
             template = SINGBOX_GEOIP_RULESET.get(geo_key)
             if template is None:
-                print(f'>! geoip ruleset for {geo_key} not found')
+                logger.warning(f'geoip ruleset for {geo_key} not found')
                 return False
             ruleset = {
                 'tag': f'geoip-{geo_key.lower()}',
@@ -427,7 +433,7 @@ class Clash2SingboxTransformer:
         if self.geosite.get(geo_key) is None:
             template = SINGBOX_GEOSITE_RULESET.get(geo_key)
             if template is None:
-                print(f'>! geosite ruleset for {geo_key} not found')
+                logger.warning(f'geosite ruleset for {geo_key} not found')
                 return False
             ruleset = {
                 'tag': f'geosite-{geo_key.lower()}',
@@ -480,6 +486,11 @@ class SingboxConfigWriter(IConfigWriter):
         self._transformer = Clash2SingboxTransformer()
         self._template = None
 
+    def get_target_file_name(self, filename: str) -> str:
+        if not filename.lower().endswith('.json'):
+            return f'{filename}.json'
+        return filename
+
     def template(self, ifile: BinaryIO) -> None:
         content = ifile.read().decode('utf-8')
         self._template = Template(content)
@@ -497,14 +508,14 @@ class SingboxConfigWriter(IConfigWriter):
                 sp = t.transform_proxy(p)
                 singbox_proxies.append(sp)
             except Exception as e:
-                print(f'>! failed to transform proxy {p.name}: {e}')
+                logger.error(f'failed to transform proxy {p.name}: {e}')
         singbox_proxy_groups = list()
         for g in proxy_groups:
             try:
                 sg = t.transform_proxy_group(g)
                 singbox_proxy_groups.append(sg)
             except Exception as e:
-                print(f'>! failed to transform proxy group {g.name}: {e}')
+                logger.error(f'failed to transform proxy group {g.name}: {e}')
         singbox_rules = t.transform_rules(rules)
 
         template_outbounds: List = obj.get('outbounds')
@@ -530,43 +541,3 @@ class SingboxConfigWriter(IConfigWriter):
 
         w = TextIOWrapper(ofile, 'utf-8')
         json_dump(obj, w, indent=2)
-            
-        
-
-if __name__ == '__main__':
-    from reader_clash import ClashSubscribeReader
-    s = r"D:\Storage\Softwares\Mihomo\cache\FlowerCloud.yml"
-    so = r"D:\Storage\Softwares\Mihomo\cache\FlowerCloud-singbox.json"
-    reader = ClashSubscribeReader()
-    with open(s, 'rb') as ifile:
-        reader.read(ifile, True)
-    t = Clash2SingboxTransformer()
-    clash_proxies = reader.get_proxies()
-    singbox_proxies = list()
-    for p in clash_proxies:
-        try:
-            sp = t.transform_proxy(p)
-            singbox_proxies.append(sp)
-        except Exception as e:
-            print(f'>! failed to transform proxy {p.name}: {e}')
-    clash_proxy_groups = reader.get_proxy_groups()
-    singbox_proxy_groups = list()
-    for g in clash_proxy_groups:
-        try:
-            sg = t.transform_proxy_group(g)
-            singbox_proxy_groups.append(sg)
-        except Exception as e:
-            print(f'>! failed to transform proxy group {g.name}: {e}')
-    clash_rules = reader.get_rules()
-    singbox_rules = t.transform_rules(clash_rules)
-    out = {
-        'proxies': singbox_proxies,
-        'proxy-groups': singbox_proxy_groups,
-        'rules': singbox_rules,
-        'geoip': list(t.geoip.values()),
-        'geosite': list(t.geosite.values()),
-    }
-    with open(so, 'w', encoding='utf-8') as ofile:
-        import json
-        json.dump(out, ofile, indent=4)
-    pass

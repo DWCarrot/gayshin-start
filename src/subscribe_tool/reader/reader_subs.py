@@ -1,9 +1,17 @@
+"""Simple subscribe reader implementation for vmess and shadowsocks"""
+
+import logging
 from io import BufferedIOBase, BytesIO, TextIOWrapper
 from typing import BinaryIO, Dict, List, Optional
 from urllib.parse import parse_qs, unquote_plus, urlparse
-from data import ISubscribeReader, Proxy, ProxyGroup, Rule
 from base64 import b64decode
 from json import load as json_load, dump as json_dump
+
+from . import ISubscribeReader
+from ..data import Proxy, ProxyGroup, Rule
+
+logger = logging.getLogger(__name__)
+
 
 HEADER_VMESS = b'vmess://'
 
@@ -150,7 +158,7 @@ class SubscribeReaderSimple(ISubscribeReader):
                 record = record_cvt_ss(link)
                 self.inner.append(record)
             else:
-                print(f'Unsupported link: {link}')
+                logger.warning(f'Unsupported link: {link}')
 
 
     def get_proxies(self) -> List[Proxy]:
