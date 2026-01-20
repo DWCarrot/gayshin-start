@@ -200,6 +200,10 @@ def _print_provider(provider: Provider):
             print('  General Groups:')
             for key, value in ps.general_group.items():
                 print(f'    {key} => {value}')
+        if ps.rewrite_rules:
+            print('  Rewrite Rules:')
+            for rewrite_rule in ps.rewrite_rules:
+                print(f'    {rewrite_rule}')
     print()
 
 def _build_provider_from_args(args: Namespace) -> Provider:
@@ -263,6 +267,16 @@ def _modify_provider_from_args(provider: Provider, args: Namespace) -> Provider:
             value = value.strip()
             if key:
                 provider.process_settings.general_group_set(key, value)
+    if hasattr(args, 'rewrite_rule') and args.rewrite_rule:
+        if not provider.process_settings:
+            provider.process_settings = ProcessSettings()
+        for rewrite_rule in args.rewrite_rule:
+            provider.process_settings.rewrite_rule_add(rewrite_rule)
+    if hasattr(args, 'remove_rewrite_rule') and args.remove_rewrite_rule:
+        if not provider.process_settings:
+            provider.process_settings = ProcessSettings()
+        for rewrite_rule in args.remove_rewrite_rule:
+            provider.process_settings.rewrite_rule_remove(rewrite_rule)
     return provider
 
 
@@ -535,6 +549,10 @@ def register_subscribe_commands(subparsers: _SubParsersAction):
                            dest='use_rules', help='Use rules from this provider (true/false)')
     edit_parser.add_argument('--general-group', type=str, dest='general_group', action='append',
                            help='General group mapping (key=value, can be repeated)')
+    edit_parser.add_argument('--rewrite-rule', type=str, dest='rewrite_rule', action='append',
+                           help='Rewrite rule (RuleType,Match,Old-Strategy=New-Strategy or RuleType,Match=New-Strategy). Match can be a normal string or regex wrapped by //')
+    edit_parser.add_argument('--remove-rewrite-rule', type=str, dest='remove_rewrite_rule', action='append',
+                           help='Remove a rewrite rule specification (same format as --rewrite-rule, can be repeated)')
     edit_parser.set_defaults(func=cmd_edit)
     
     # Update subcommand

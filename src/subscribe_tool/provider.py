@@ -8,12 +8,155 @@ import logging
 from datetime import datetime
 import time
 from tzlocal import get_localzone
+import re
 
 from .utils import download
-from .data import GeneralGroup, Proxy, ProxyGroup, Rule
+from .data import GeneralGroup, Proxy, ProxyGroup, Rule, RuleType
 from .reader import ISubscribeReader
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RewriteRuleSpec:
+    """Specification for a single rewrite rule."""
+
+    rule_type: RuleType
+    match: str
+    new_strategy: str
+    old_strategy: Optional[str] = None
+    is_regex: bool = False
+
+    @staticmethod
+    def from_string(spec: str) -> "RewriteRuleSpec":
+        """
+        Parse from CLI string formats:
+          - "RuleType,Match,Old-Strategy=New-Strategy"
+          - "RuleType,Match=New-Strategy"
+        Also supports legacy:
+          - "RuleType,Match,New-Strategy"
+        Match may be regex wrapped by "//".
+        """
+        if not spec:
+            raise ValueError("empty rewrite rule specification")
+
+        parts = spec.split(",", 2)
+        if len(parts) < 2:
+            raise ValueError(f'invalid rewrite rule format: "{spec}"')
+
+        rule_type_str = parts[0].strip()
+        try:
+            rule_type = RuleType(rule_type_str)
+        except ValueError as e:
+            raise ValueError(f'invalid rule type "{rule_type_str}"') from e
+
+        if len(parts) == 2:
+            # "RuleType,Match=New-Strategy"
+            rest = parts[1].strip()
+            if "=" not in rest:
+                raise ValueError(f'invalid rewrite rule format (missing "="): "{spec}"')
+            match_part, new_strategy = rest.split("=", 1)
+            old_strategy = None
+        else:
+            # len(parts) == 3:
+            # "RuleType,Match,Old-Strategy=New-Strategy"
+            # or legacy "RuleType,Match,New-Strategy"
+            match_part = parts[1].strip()
+            strategy_part = parts[2].strip()
+            if "=" in strategy_part:
+                old_strategy, new_strategy = strategy_part.split("=", 1)
+                old_strategy = old_strategy.strip() or None
+            else:
+                old_strategy = None
+                new_strategy = strategy_part
+
+        match_raw = match_part.strip()
+        is_regex = match_raw.startswith("/") and match_raw.endswith("/") and len(match_raw) >= 2
+        match = match_raw[1:-1] if is_regex else match_raw
+
+        new_strategy = new_strategy.strip()
+        if not new_strategy:
+            raise ValueError(f'new strategy cannot be empty in "{spec}"')
+
+        return RewriteRuleSpec(
+            rule_type=rule_type,
+            match=match,
+            new_strategy=new_strategy,
+            old_strategy=old_strategy.strip() if old_strategy else None,
+            is_regex=is_regex,
+        )
+
+    @staticmethod
+    def from_config(obj: Dict) -> "RewriteRuleSpec":
+        """Create from serialized config object."""
+        rule_type_str = obj.get("rule_type")
+        if not rule_type_str:
+            raise ValueError("rewrite rule config missing 'rule_type'")
+        rule_type = RuleType(rule_type_str)
+
+        match = obj.get("match")
+        if match is None:
+            raise ValueError("rewrite rule config missing 'match'")
+
+        new_strategy = obj.get("new_strategy")
+        if not new_strategy:
+            raise ValueError("rewrite rule config missing 'new_strategy'")
+
+        old_strategy = obj.get("old_strategy")
+        is_regex = bool(obj.get("is_regex", False))
+
+        return RewriteRuleSpec(
+            rule_type=rule_type,
+            match=str(match),
+            new_strategy=str(new_strategy),
+            old_strategy=str(old_strategy) if old_strategy is not None else None,
+            is_regex=is_regex,
+        )
+
+    def to_config(self) -> Dict:
+        """Serialize to config object."""
+        result: Dict[str, object] = {
+            "rule_type": self.rule_type.value,
+            "match": self.match,
+            "new_strategy": self.new_strategy,
+        }
+        if self.old_strategy is not None:
+            result["old_strategy"] = self.old_strategy
+        if self.is_regex:
+            result["is_regex"] = True
+        return result
+
+    def matches(self, rule: Rule) -> bool:
+        """Check whether this rewrite rule applies to the given rule."""
+        if rule.type == RuleType.MATCH:
+            # MATCH rules don't have a match field
+            return False
+        if rule.type != self.rule_type:
+            return False
+        if self.old_strategy is not None and rule.strategy != self.old_strategy:
+            return False
+
+        target = rule.match
+        if target is None:
+            return False
+
+        if self.is_regex:
+            try:
+                return re.search(self.match, target) is not None
+            except re.error:
+                # Should not happen if validated on creation, but be safe
+                logger.warning("invalid regex in RewriteRuleSpec: %s", self.match)
+                return False
+        else:
+            return target == self.match
+
+    def __str__(self) -> str:
+        """Human-readable/CLI representation."""
+        match_display = f"/{self.match}/" if self.is_regex else self.match
+        if self.old_strategy:
+            return f"{self.rule_type.value},{match_display},{self.old_strategy}={self.new_strategy}"
+        return f"{self.rule_type.value},{match_display}={self.new_strategy}"
+
 
 class Info(object):
 
@@ -25,7 +168,15 @@ class Info(object):
     proxy_groups_other: Dict[str, ProxyGroup]  # proxy group name -> proxy group
     rules: List[Rule]
 
-    def __init__(self, reader: ISubscribeReader, name: str, priority: int, use_rules: bool, group_info: Optional[Dict[str, GeneralGroup]] = None):
+    def __init__(
+        self,
+        reader: ISubscribeReader,
+        name: str,
+        priority: int,
+        use_rules: bool,
+        group_info: Optional[Dict[str, GeneralGroup]] = None,
+        rewrite_rules: Optional[List[RewriteRuleSpec]] = None,
+    ):
         self.name = name
         self.priority = priority
         self.use_rules = use_rules
@@ -52,6 +203,9 @@ class Info(object):
                 self.proxy_groups_general[category] = reader.get_all_proxies(category.value)
         # self.rules
         self.rules = reader.get_rules()
+        # apply rewrite rules
+        if rewrite_rules:
+            self._apply_rewrite_rules(rewrite_rules)
 
     def modify_by_name(self, prefix: str) -> None:
         # modify proxy name
@@ -90,6 +244,16 @@ class Info(object):
         for r in self.rules:
             r.strategy = inner_modifier(r.strategy)
             #TODO: modify sub-rule name
+    
+    def _apply_rewrite_rules(self, rewrite_rules: List[RewriteRuleSpec]) -> None:
+        """Apply rewrite rules to modify rule strategies."""
+        for spec in rewrite_rules:
+            for rule in self.rules:
+                try:
+                    if spec.matches(rule):
+                        rule.strategy = spec.new_strategy
+                except Exception as e:
+                    logger.warning("failed to apply rewrite rule %s: %s", spec, e)
 
 def extract(info: Info) -> Tuple[List[Proxy], List[ProxyGroup], List[Rule]]:
     proxies = info.proxies
@@ -175,7 +339,15 @@ class ProcessSettings(object):
 
     general_group: Dict[str, GeneralGroup]  # how to map group info to GeneralGroup; default={}
 
-    def __init__(self, use_rules: bool = False, general_group: Optional[Dict[str, str]] = None, **kwargs):
+    rewrite_rules: List[RewriteRuleSpec]  # list of rewrite rule specifications; default=[]
+
+    def __init__(
+        self,
+        use_rules: bool = False,
+        general_group: Optional[Dict[str, str]] = None,
+        rewrite_rules: Optional[List] = None,
+        **kwargs,
+    ):
         self.use_rules = use_rules
         self.general_group = {}
         if general_group is not None:
@@ -185,6 +357,20 @@ class ProcessSettings(object):
                 except ValueError:
                     logger.warning('unknown general group value: %s, ignore', v)
                     continue
+        self.rewrite_rules: List[RewriteRuleSpec] = []
+        if rewrite_rules is not None:
+            for item in rewrite_rules:
+                try:
+                    if isinstance(item, str):
+                        spec = RewriteRuleSpec.from_string(item)
+                    elif isinstance(item, dict):
+                        spec = RewriteRuleSpec.from_config(item)
+                    else:
+                        logger.warning('unknown rewrite rule item type: %s', type(item))
+                        continue
+                    self.rewrite_rules.append(spec)
+                except Exception as e:
+                    logger.warning('invalid rewrite rule "%s": %s', item, e)
         if kwargs and len(kwargs) > 0:
             logger.warning('unknown process settings fields: %s, ignore', kwargs.keys())
     
@@ -197,6 +383,8 @@ class ProcessSettings(object):
             for k, v in self.general_group.items():
                 gg[k] = v.value
             result['general_group'] = gg
+        if self.rewrite_rules and len(self.rewrite_rules) > 0:
+            result['rewrite_rules'] = [spec.to_config() for spec in self.rewrite_rules]
         return result
     
     def general_group_set(self, key: str, value: Optional[str]) -> None:
@@ -208,6 +396,25 @@ class ProcessSettings(object):
                 self.general_group[key] = GeneralGroup(value)
             except ValueError:
                 logger.warning('unknown general group value: %s, ignore', value)
+    
+    def rewrite_rule_add(self, rewrite_rule: str) -> None:
+        """Add a rewrite rule specification from CLI string."""
+        try:
+            spec = RewriteRuleSpec.from_string(rewrite_rule)
+        except ValueError as e:
+            logger.warning('invalid rewrite rule "%s": %s', rewrite_rule, e)
+            return
+        if spec not in self.rewrite_rules:
+            self.rewrite_rules.append(spec)
+    
+    def rewrite_rule_remove(self, rewrite_rule: str) -> None:
+        """Remove a rewrite rule specification from CLI string."""
+        try:
+            spec = RewriteRuleSpec.from_string(rewrite_rule)
+        except ValueError as e:
+            logger.warning('invalid rewrite rule for removal "%s": %s', rewrite_rule, e)
+            return
+        self.rewrite_rules = [s for s in self.rewrite_rules if s != spec]
 
 
 class Provider(object):
@@ -323,7 +530,8 @@ class Provider(object):
             self._load_remote(self._url, reader, cache_root)
         use_rules = self.process_settings.use_rules if self.process_settings is not None else False
         group_info = self.process_settings.general_group if self.process_settings is not None else None
-        return Info(reader, self.name, self.priority, use_rules, group_info)
+        rewrite_rules = self.process_settings.rewrite_rules if self.process_settings is not None else None
+        return Info(reader, self.name, self.priority, use_rules, group_info, rewrite_rules)
     
     def update(self, reader_factory: Callable[[str], ISubscribeReader], cache_root: str) -> bool:
         reader = reader_factory(self.type)
