@@ -252,9 +252,9 @@ def _modify_provider_from_args(provider: Provider, args: Namespace) -> Provider:
         provider.priority = args.priority
     if hasattr(args, 'update_interval') and args.update_interval is not None:
         provider.update_interval = args.update_interval
-    if hasattr(args, 'ignore'):
+    if hasattr(args, 'ignore') and args.ignore is not None:
         provider.ignore = args.ignore
-    if hasattr(args, 'use_rules'):
+    if hasattr(args, 'use_rules') and args.use_rules is not None:
         if not provider.process_settings:
             provider.process_settings = ProcessSettings()
         provider.process_settings.use_rules = args.use_rules
@@ -550,7 +550,7 @@ def register_subscribe_commands(subparsers: _SubParsersAction):
     edit_parser.add_argument('--general-group', type=str, dest='general_group', action='append',
                            help='General group mapping (key=value, can be repeated)')
     edit_parser.add_argument('--rewrite-rule', type=str, dest='rewrite_rule', action='append',
-                           help='Rewrite rule (RuleType,Match,Old-Strategy=New-Strategy or RuleType,Match=New-Strategy). Match can be a normal string or regex wrapped by //')
+                           help='Rewrite rule. Formats: "RuleType,Match,Old-Strategy=New-Strategy", "RuleType,Match=New-Strategy", or "RuleType,Match,Old-Strategy=" (to remove matched rules). Match can be a normal string or regex wrapped by //')
     edit_parser.add_argument('--remove-rewrite-rule', type=str, dest='remove_rewrite_rule', action='append',
                            help='Remove a rewrite rule specification (same format as --rewrite-rule, can be repeated)')
     edit_parser.set_defaults(func=cmd_edit)

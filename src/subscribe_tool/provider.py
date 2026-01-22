@@ -23,7 +23,7 @@ class RewriteRuleSpec:
 
     rule_type: RuleType
     match: str
-    new_strategy: str
+    new_strategy: Optional[str]  # None or empty means remove the rule
     old_strategy: Optional[str] = None
     is_regex: bool = False
 
@@ -75,13 +75,14 @@ class RewriteRuleSpec:
         match = match_raw[1:-1] if is_regex else match_raw
 
         new_strategy = new_strategy.strip()
-        if not new_strategy:
-            raise ValueError(f'new strategy cannot be empty in "{spec}"')
+        # Empty new_strategy means remove the rule (only valid when old_strategy is provided)
+        if not new_strategy and old_strategy is None:
+            raise ValueError(f'new strategy cannot be empty unless old strategy is provided in "{spec}"')
 
         return RewriteRuleSpec(
             rule_type=rule_type,
             match=match,
-            new_strategy=new_strategy,
+            new_strategy=new_strategy if new_strategy else None,
             old_strategy=old_strategy.strip() if old_strategy else None,
             is_regex=is_regex,
         )
@@ -99,8 +100,9 @@ class RewriteRuleSpec:
             raise ValueError("rewrite rule config missing 'match'")
 
         new_strategy = obj.get("new_strategy")
-        if not new_strategy:
-            raise ValueError("rewrite rule config missing 'new_strategy'")
+        # Empty or None new_strategy means remove (only valid when old_strategy is provided)
+        if not new_strategy and obj.get("old_strategy") is None:
+            raise ValueError("rewrite rule config missing 'new_strategy' (required when 'old_strategy' is not provided)")
 
         old_strategy = obj.get("old_strategy")
         is_regex = bool(obj.get("is_regex", False))
@@ -108,7 +110,7 @@ class RewriteRuleSpec:
         return RewriteRuleSpec(
             rule_type=rule_type,
             match=str(match),
-            new_strategy=str(new_strategy),
+            new_strategy=str(new_strategy) if new_strategy else None,
             old_strategy=str(old_strategy) if old_strategy is not None else None,
             is_regex=is_regex,
         )
@@ -118,8 +120,9 @@ class RewriteRuleSpec:
         result: Dict[str, object] = {
             "rule_type": self.rule_type.value,
             "match": self.match,
-            "new_strategy": self.new_strategy,
         }
+        if self.new_strategy is not None:
+            result["new_strategy"] = self.new_strategy
         if self.old_strategy is not None:
             result["old_strategy"] = self.old_strategy
         if self.is_regex:
@@ -154,7 +157,11 @@ class RewriteRuleSpec:
         """Human-readable/CLI representation."""
         match_display = f"/{self.match}/" if self.is_regex else self.match
         if self.old_strategy:
+            if self.new_strategy is None:
+                return f"{self.rule_type.value},{match_display},{self.old_strategy}="
             return f"{self.rule_type.value},{match_display},{self.old_strategy}={self.new_strategy}"
+        if self.new_strategy is None:
+            return f"{self.rule_type.value},{match_display}="
         return f"{self.rule_type.value},{match_display}={self.new_strategy}"
 
 
@@ -246,14 +253,32 @@ class Info(object):
             #TODO: modify sub-rule name
     
     def _apply_rewrite_rules(self, rewrite_rules: List[RewriteRuleSpec]) -> None:
-        """Apply rewrite rules to modify rule strategies."""
+        """Apply rewrite rules to modify rule strategies or remove rules."""
+        # Process removals first (in reverse order to avoid index issues)
+        rules_to_remove = set()
         for spec in rewrite_rules:
-            for rule in self.rules:
-                try:
-                    if spec.matches(rule):
-                        rule.strategy = spec.new_strategy
-                except Exception as e:
-                    logger.warning("failed to apply rewrite rule %s: %s", spec, e)
+            if spec.new_strategy is None:
+                # This is a removal rule
+                for i, rule in enumerate(self.rules):
+                    try:
+                        if spec.matches(rule):
+                            rules_to_remove.add(i)
+                    except Exception as e:
+                        logger.warning("failed to apply rewrite rule %s: %s", spec, e)
+        
+        # Remove rules in reverse order to maintain correct indices
+        for i in sorted(rules_to_remove, reverse=True):
+            del self.rules[i]
+        
+        # Then apply rewrites
+        for spec in rewrite_rules:
+            if spec.new_strategy is not None:
+                for rule in self.rules:
+                    try:
+                        if spec.matches(rule):
+                            rule.strategy = spec.new_strategy
+                    except Exception as e:
+                        logger.warning("failed to apply rewrite rule %s: %s", spec, e)
 
 def extract(info: Info) -> Tuple[List[Proxy], List[ProxyGroup], List[Rule]]:
     proxies = info.proxies
