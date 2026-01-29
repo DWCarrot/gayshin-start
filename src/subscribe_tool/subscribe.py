@@ -204,6 +204,10 @@ def _print_provider(provider: Provider):
             print('  Rewrite Rules:')
             for rewrite_rule in ps.rewrite_rules:
                 print(f'    {rewrite_rule}')
+        if ps.add_rules:
+            print('  Add Rules:')
+            for add_rule in ps.add_rules:
+                print(f'    {add_rule}')
     print()
 
 def _build_provider_from_args(args: Namespace) -> Provider:
@@ -277,6 +281,16 @@ def _modify_provider_from_args(provider: Provider, args: Namespace) -> Provider:
             provider.process_settings = ProcessSettings()
         for rewrite_rule in args.remove_rewrite_rule:
             provider.process_settings.rewrite_rule_remove(rewrite_rule)
+    if hasattr(args, 'add_rule') and args.add_rule:
+        if not provider.process_settings:
+            provider.process_settings = ProcessSettings()
+        for add_rule in args.add_rule:
+            provider.process_settings.add_rule_add(add_rule)
+    if hasattr(args, 'remove_add_rule') and args.remove_add_rule:
+        if not provider.process_settings:
+            provider.process_settings = ProcessSettings()
+        for add_rule in args.remove_add_rule:
+            provider.process_settings.add_rule_remove(add_rule)
     return provider
 
 
@@ -553,6 +567,10 @@ def register_subscribe_commands(subparsers: _SubParsersAction):
                            help='Rewrite rule. Formats: "RuleType,Match,Old-Strategy=New-Strategy", "RuleType,Match=New-Strategy", or "RuleType,Match,Old-Strategy=" (to remove matched rules). Match can be a normal string or regex wrapped by //')
     edit_parser.add_argument('--remove-rewrite-rule', type=str, dest='remove_rewrite_rule', action='append',
                            help='Remove a rewrite rule specification (same format as --rewrite-rule, can be repeated)')
+    edit_parser.add_argument('--add-rule', type=str, dest='add_rule', action='append',
+                           help='Add a new rule. Format: "RuleType,Match,Strategy"')
+    edit_parser.add_argument('--remove-add-rule', type=str, dest='remove_add_rule', action='append',
+                           help='Remove an add rule specification (same format as --add-rule, can be repeated)')
     edit_parser.set_defaults(func=cmd_edit)
     
     # Update subcommand

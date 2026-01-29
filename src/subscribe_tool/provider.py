@@ -18,6 +18,93 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class AddRuleSpec:
+    """Specification for a single add rule."""
+
+    rule_type: RuleType
+    match: str
+    strategy: str
+
+    @staticmethod
+    def from_string(spec: str) -> "AddRuleSpec":
+        """
+        Parse from CLI string format: "RuleType,Match,Strategy"
+        """
+        if not spec:
+            raise ValueError("empty add rule specification")
+
+        parts = spec.split(",", 2)
+        if len(parts) != 3:
+            raise ValueError(f'invalid add rule format: "{spec}" (expected "RuleType,Match,Strategy")')
+
+        rule_type_str = parts[0].strip()
+        try:
+            rule_type = RuleType(rule_type_str)
+        except ValueError as e:
+            raise ValueError(f'invalid rule type "{rule_type_str}"') from e
+
+        match = parts[1].strip()
+        strategy = parts[2].strip()
+
+        if not match:
+            raise ValueError(f'match cannot be empty in "{spec}"')
+        if not strategy:
+            raise ValueError(f'strategy cannot be empty in "{spec}"')
+
+        return AddRuleSpec(
+            rule_type=rule_type,
+            match=match,
+            strategy=strategy,
+        )
+
+    @staticmethod
+    def from_config(obj: Dict) -> "AddRuleSpec":
+        """Create from serialized config object."""
+        rule_type_str = obj.get("rule_type")
+        if not rule_type_str:
+            raise ValueError("add rule config missing 'rule_type'")
+        rule_type = RuleType(rule_type_str)
+
+        match = obj.get("match")
+        if not match:
+            raise ValueError("add rule config missing 'match'")
+
+        strategy = obj.get("strategy")
+        if not strategy:
+            raise ValueError("add rule config missing 'strategy'")
+
+        return AddRuleSpec(
+            rule_type=rule_type,
+            match=str(match),
+            strategy=str(strategy),
+        )
+
+    def to_config(self) -> Dict:
+        """Serialize to config object."""
+        return {
+            "rule_type": self.rule_type.value,
+            "match": self.match,
+            "strategy": self.strategy,
+        }
+
+    def __str__(self) -> str:
+        """Human-readable/CLI representation."""
+        return f"{self.rule_type.value},{self.match},{self.strategy}"
+
+    def __eq__(self, other):
+        """Compare two AddRuleSpec instances."""
+        if not isinstance(other, AddRuleSpec):
+            return False
+        return (self.rule_type == other.rule_type and
+                self.match == other.match and
+                self.strategy == other.strategy)
+
+    def __hash__(self):
+        """Make AddRuleSpec hashable."""
+        return hash((self.rule_type, self.match, self.strategy))
+
+
+@dataclass
 class RewriteRuleSpec:
     """Specification for a single rewrite rule."""
 
@@ -183,6 +270,7 @@ class Info(object):
         use_rules: bool,
         group_info: Optional[Dict[str, GeneralGroup]] = None,
         rewrite_rules: Optional[List[RewriteRuleSpec]] = None,
+        add_rules: Optional[List[AddRuleSpec]] = None,
     ):
         self.name = name
         self.priority = priority
@@ -213,6 +301,9 @@ class Info(object):
         # apply rewrite rules
         if rewrite_rules:
             self._apply_rewrite_rules(rewrite_rules)
+        # apply add rules
+        if add_rules:
+            self._apply_add_rules(add_rules)
 
     def modify_by_name(self, prefix: str) -> None:
         # modify proxy name
@@ -279,6 +370,21 @@ class Info(object):
                             rule.strategy = spec.new_strategy
                     except Exception as e:
                         logger.warning("failed to apply rewrite rule %s: %s", spec, e)
+
+    def _apply_add_rules(self, add_rules: List[AddRuleSpec]) -> None:
+        """Apply add rules to add new rules to the rules list."""
+        new_rules = []
+        for spec in add_rules:
+            try:
+                # Create a Rule object from the spec
+                # Format: "RuleType,Match,Strategy"
+                rule_str = f"{spec.rule_type.value},{spec.match},{spec.strategy}"
+                rule = Rule(rule_str)
+                new_rules.append(rule)
+            except Exception as e:
+                logger.warning("failed to apply add rule %s: %s", spec, e)
+        # Insert new rules at the front of the rules list
+        self.rules = new_rules + self.rules
 
 def extract(info: Info) -> Tuple[List[Proxy], List[ProxyGroup], List[Rule]]:
     proxies = info.proxies
@@ -366,11 +472,14 @@ class ProcessSettings(object):
 
     rewrite_rules: List[RewriteRuleSpec]  # list of rewrite rule specifications; default=[]
 
+    add_rules: List[AddRuleSpec]  # list of add rule specifications; default=[]
+
     def __init__(
         self,
         use_rules: bool = False,
         general_group: Optional[Dict[str, str]] = None,
         rewrite_rules: Optional[List] = None,
+        add_rules: Optional[List] = None,
         **kwargs,
     ):
         self.use_rules = use_rules
@@ -396,6 +505,20 @@ class ProcessSettings(object):
                     self.rewrite_rules.append(spec)
                 except Exception as e:
                     logger.warning('invalid rewrite rule "%s": %s', item, e)
+        self.add_rules: List[AddRuleSpec] = []
+        if add_rules is not None:
+            for item in add_rules:
+                try:
+                    if isinstance(item, str):
+                        spec = AddRuleSpec.from_string(item)
+                    elif isinstance(item, dict):
+                        spec = AddRuleSpec.from_config(item)
+                    else:
+                        logger.warning('unknown add rule item type: %s', type(item))
+                        continue
+                    self.add_rules.append(spec)
+                except Exception as e:
+                    logger.warning('invalid add rule "%s": %s', item, e)
         if kwargs and len(kwargs) > 0:
             logger.warning('unknown process settings fields: %s, ignore', kwargs.keys())
     
@@ -410,6 +533,8 @@ class ProcessSettings(object):
             result['general_group'] = gg
         if self.rewrite_rules and len(self.rewrite_rules) > 0:
             result['rewrite_rules'] = [spec.to_config() for spec in self.rewrite_rules]
+        if self.add_rules and len(self.add_rules) > 0:
+            result['add_rules'] = [spec.to_config() for spec in self.add_rules]
         return result
     
     def general_group_set(self, key: str, value: Optional[str]) -> None:
@@ -440,6 +565,25 @@ class ProcessSettings(object):
             logger.warning('invalid rewrite rule for removal "%s": %s', rewrite_rule, e)
             return
         self.rewrite_rules = [s for s in self.rewrite_rules if s != spec]
+    
+    def add_rule_add(self, add_rule: str) -> None:
+        """Add an add rule specification from CLI string."""
+        try:
+            spec = AddRuleSpec.from_string(add_rule)
+        except ValueError as e:
+            logger.warning('invalid add rule "%s": %s', add_rule, e)
+            return
+        if spec not in self.add_rules:
+            self.add_rules.append(spec)
+    
+    def add_rule_remove(self, add_rule: str) -> None:
+        """Remove an add rule specification from CLI string."""
+        try:
+            spec = AddRuleSpec.from_string(add_rule)
+        except ValueError as e:
+            logger.warning('invalid add rule for removal "%s": %s', add_rule, e)
+            return
+        self.add_rules = [s for s in self.add_rules if s != spec]
 
 
 class Provider(object):
@@ -556,7 +700,8 @@ class Provider(object):
         use_rules = self.process_settings.use_rules if self.process_settings is not None else False
         group_info = self.process_settings.general_group if self.process_settings is not None else None
         rewrite_rules = self.process_settings.rewrite_rules if self.process_settings is not None else None
-        return Info(reader, self.name, self.priority, use_rules, group_info, rewrite_rules)
+        add_rules = self.process_settings.add_rules if self.process_settings is not None else None
+        return Info(reader, self.name, self.priority, use_rules, group_info, rewrite_rules, add_rules)
     
     def update(self, reader_factory: Callable[[str], ISubscribeReader], cache_root: str) -> bool:
         reader = reader_factory(self.type)
