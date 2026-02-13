@@ -312,6 +312,12 @@ class Info(object):
             new_name = f'[{prefix}]-{name}'
             proxies_names[p.name] = new_name
             p.name = new_name
+            # modify proxy item
+            dialer_proxy = p.inner.get('dialer-proxy')
+            if dialer_proxy is not None:
+                dialer_proxy = f'[{prefix}]-{dialer_proxy}'
+                p.inner['dialer-proxy'] = dialer_proxy
+            
         # modify proxy group name
         proxy_groups_names = {}
         for category, g in self.proxy_groups_general.items():
@@ -725,15 +731,12 @@ class Provider(object):
                 need_update = True
         logger.debug('Provider{%s} load remote %s need update: %s', self.name, url, need_update)
         if need_update:
+            base_name = 'config'
             try:
                 logger.info('Provider{%s} downloading from %s', self.name, url)
                 content, file_name = download(url)
                 if file_name and Provider._is_valid_filename(file_name):
-                    file_name_main, file_name_ext = path.splitext(file_name)
-                    cache_file = reader.get_cache_name(file_name_main)
-                if cache_file is None:
-                    cache_file = reader.get_cache_name('config')
-                cache_file = path.join(cache_root, self.name, cache_file)
+                    base_name, _ = path.splitext(file_name)
                 logger.info('Provider{%s} downloaded %s from %s', self.name, file_name or '<file>', url)
             except Exception as e:
                 if self._cache:
@@ -743,14 +746,16 @@ class Provider(object):
                     return False
                 raise e
             with BytesIO(content) as ifile:
-                # ensure cache directory exists
-                cache_dir = path.dirname(cache_file)
-                if not path.exists(cache_dir):
-                    makedirs(cache_dir, exist_ok=True)
-                with open(cache_file, 'wb') as ofile_cache:
-                    reader.read(ifile, False, ofile_cache)
-                    self._cache = cache_file
-                    self.last_update = int(time.time())
+                reader.load(ifile, False)
+            # ensure cache directory exists and dump to cache file
+            cache_file = path.join(cache_root, self.name, reader.get_cache_name(base_name))
+            cache_dir = path.dirname(cache_file)
+            if not path.exists(cache_dir):
+                makedirs(cache_dir, exist_ok=True)
+            with open(cache_file, 'wb') as ofile_cache:
+                reader.dump(ofile_cache)
+            self._cache = cache_file
+            self.last_update = int(time.time())
             logger.info('Provider{%s} loaded from remote %s and cached to %s', self.name, url, cache_file)
             return True
         else:
@@ -762,12 +767,12 @@ class Provider(object):
     def _load_local(self, local: str, reader: ISubscribeReader):
         logger.info('Provider{%s} loading from local file %s', self.name, local)
         with open(local, 'rb') as ifile:
-            reader.read(ifile, False, None)
+            reader.load(ifile, False)
         logger.info('Provider{%s} loaded from local file %s', self.name, local)
 
     def _load_cache(self, cache: str, reader: ISubscribeReader):
         with open(cache, 'rb') as ifile:
-            reader.read(ifile, True, None)
+            reader.load(ifile, True)
 
     @staticmethod
     def get_local_file_url(file_path: str) -> str:

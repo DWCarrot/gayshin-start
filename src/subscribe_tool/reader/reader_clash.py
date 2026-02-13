@@ -1,5 +1,7 @@
 """Clash subscribe reader implementation"""
 
+from io import TextIOWrapper
+from json import dump as json_dump
 import logging
 from typing import BinaryIO, Optional, Dict, List
 
@@ -16,28 +18,40 @@ except ImportError as e:
 
 
 class ClashSubscribeReader(ISubscribeReader):
-    
+
     inner: Dict
+    _raw_content: Optional[bytes]
+    _is_json: bool
 
     def __init__(self):
         super().__init__()
 
-    def get_cache_name(self, filename: str) -> str:
-        return filename + '.yml'
-
-    def read(self, ifile: BinaryIO, is_cache: bool, ofile_cache: Optional[BinaryIO] = None) -> None:
-        loader = Loader(ifile) # TODO: encoding?
+    def load(self, ifile: BinaryIO, is_cache: bool) -> None:
+        loader = Loader(ifile)  # TODO: encoding?
         try:
             self.inner = loader.get_single_data()
         finally:
             loader.dispose()
-        if not is_cache and ofile_cache is not None:
+        if not is_cache:
             ifile.seek(0)
-            while True:
-                data = ifile.read(1024)
-                if not data:
-                    break
-                ofile_cache.write(data)
+            self._raw_content = ifile.read()
+            tmp = self._raw_content.strip()
+            self._is_json = tmp.startswith(b'{') and tmp.endswith(b'}')
+        else:
+            self._raw_content = None
+
+    def get_cache_name(self, filename: str) -> str:
+        if self._is_json:
+            return filename + '.json'
+        else:
+            return filename + '.yml'
+
+    def dump(self, ofile: BinaryIO) -> None:
+        if self._is_json:
+            with TextIOWrapper(ofile, encoding='utf-8') as w:
+                json_dump(self.inner, w, indent=4, ensure_ascii=False)
+        else:
+            ofile.write(self._raw_content)
 
 
     def get_proxies(self) -> List[Proxy]:

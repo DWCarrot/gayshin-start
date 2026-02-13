@@ -126,29 +126,24 @@ def record_cvt_ss(url: str):
 class SubscribeReaderSimple(ISubscribeReader):
 
     inner: List[Dict]
+    _links: List[str]
 
     def __init__(self):
         super().__init__()
 
-    def get_cache_name(self, filename: str) -> str:
-        return filename + '.txt'
-
-    def read(self, ifile: BinaryIO, is_cache: bool, ofile_cache: Optional[BinaryIO] = None) -> None:
+    def load(self, ifile: BinaryIO, is_cache: bool) -> None:
         links: List[str] = list()
         if not is_cache:
             raw = ifile.read()
             data = b64decode(raw)
             for record_line in data.splitlines():
                 links.append(record_line.decode('utf-8').strip())
-            if ofile_cache is not None:
-                writer = TextIOWrapper(ofile_cache, encoding='utf-8')
-                writer.writelines(link + '\n' for link in links)
-                writer.flush()
         else:
             for line in ifile:
                 line = line.rstrip(b'\n\r')
                 if line:
                     links.append(line.decode('utf-8'))
+        self._links = links
         self.inner = list()
         for link in links:
             if link.startswith('vmess://'):
@@ -160,6 +155,13 @@ class SubscribeReaderSimple(ISubscribeReader):
             else:
                 logger.warning(f'Unsupported link: {link}')
 
+    def get_cache_name(self, filename: str) -> str:
+        return filename + '.txt'
+
+    def dump(self, ofile: BinaryIO) -> None:
+        writer = TextIOWrapper(ofile, encoding='utf-8')
+        writer.writelines(link + '\n' for link in self._links)
+        writer.flush()
 
     def get_proxies(self) -> List[Proxy]:
         proxies = [Proxy(p) for p in self.inner]

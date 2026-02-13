@@ -1,7 +1,7 @@
 """Subscribe reader interface and implementations"""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, BinaryIO
+from typing import List, BinaryIO
 
 from ..data import Proxy, ProxyGroup, Rule
 
@@ -12,11 +12,18 @@ class ISubscribeReader(ABC):
         pass
 
     @abstractmethod
-    def get_cache_name(self, filename: str) -> str:
+    def load(self, ifile: BinaryIO, is_cache: bool) -> None:
+        """Load config from input file."""
         pass
 
     @abstractmethod
-    def read(self, ifile: BinaryIO, is_cache: bool, ofile_cache: Optional[BinaryIO] = None) -> None:
+    def get_cache_name(self, filename: str) -> str:
+        """Return cache file name for the given base filename."""
+        pass
+
+    @abstractmethod
+    def dump(self, ofile: BinaryIO) -> None:
+        """Write loaded config to output file (for cache)."""
         pass
 
     @abstractmethod
