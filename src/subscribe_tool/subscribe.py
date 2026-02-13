@@ -17,13 +17,13 @@ class ProviderManager(ConfigurationHandler):
     """Manages providers"""
     
     _providers: OrderedDict[str, Provider]
-    _last_cmd: Dict
+    _last_cmd: Dict[str, Dict]
     _ctx: Configuration
 
     def __init__(self):
         self._providers = OrderedDict()
         self._ctx = None
-        self._last_cmd = None
+        self._last_cmd = {}
 
     @override
     def on_enable(self, ctx: Configuration):
@@ -48,14 +48,20 @@ class ProviderManager(ConfigurationHandler):
                     logger.warning('Failed to deserialize provider: %s', e)
         last_cmd = data.get('generate')
         if last_cmd and isinstance(last_cmd, dict):
-            self._last_cmd = last_cmd
+            # Migrate old format (flat dict with 'target' key) to new format (by name)
+            if self._last_command_v1(last_cmd):
+                logger.info('Migrated last command from old format to new format')
+                key, data = self._migrate_last_command_v1(last_cmd)
+                self._last_cmd[key] = data
+            else:
+                self._last_cmd = last_cmd
     
     @override
     def on_save(self, data: Dict):
         """Save providers to configuration data"""
         data['providers'] = [provider.serialize() for provider in self._providers.values()]
         if self._last_cmd:
-            data['generate'] = self._last_cmd
+            data['generate'] = dict(self._last_cmd)
     
     def get_providers(self) -> List[Provider]:
         """Get all providers"""
@@ -163,13 +169,32 @@ class ProviderManager(ConfigurationHandler):
         for provider in providers:
             _print_provider(provider)
 
-    def set_last_command(self, **kwargs) -> None:
-        """Set the last command executed on providers"""
-        self._last_cmd = kwargs
+    def set_last_command(self, name: str, **kwargs) -> None:
+        """Set the last command executed on providers, stored by name"""
+        self._last_cmd[name] = kwargs
 
-    def get_last_command(self) -> Optional[Dict]:
-        """Get the last command executed on providers"""
-        return self._last_cmd
+    def get_last_command(self, name: str = '') -> Optional[Dict]:
+        """Get the last command executed on providers by name"""
+        return self._last_cmd.get(name)
+
+    def _last_command_v1(self, data: Dict) -> bool:
+        for key, value in data.items():
+            if key == 'variables':
+                continue
+            if isinstance(value, dict):
+                return False
+            else:
+                return True
+
+    def _migrate_last_command_v1(self, data: Dict) -> Tuple[str, Dict]:
+        key = data.get('name')
+        if key is None:
+            key = ''
+        else:
+            del data['name']
+        return key, data
+
+
 
 def _print_provider(provider: Provider):
     print()
@@ -429,6 +454,7 @@ def cmd_list(args: Namespace, ctx: Context) -> None:
 
 def cmd_generate(args: Namespace, ctx: Context) -> None:
     """Handle 'generate' subcommand"""
+    is_regenerate = hasattr(args, 'regenerate') and args.regenerate
     mgr = ctx.get_provider_manager()
     name: str = args.name
     target: str = args.target
@@ -465,13 +491,14 @@ def cmd_generate(args: Namespace, ctx: Context) -> None:
                 writer.write(ofile, proxies, proxy_groups, rules, **variables)
                 logger.info('Wrote generated configuration to %s with %d proxies, %d proxy groups, and %d rules', output, len(proxies), len(proxy_groups), len(rules))
             print(f'Provider "{provider.name}" generated to "{output}"')
-            mgr.set_last_command(
-                name=name,
-                target=target,
-                template=template,
-                output=output,
-                variables=variables
-            )
+            if not is_regenerate:
+                mgr.set_last_command(
+                    name=name,
+                    target=target,
+                    template=template,
+                    output=output,
+                    variables=variables
+                )
             mgr.do_save()
         except Exception as e:
             logger.error('Failed to generate provider "%s": %s', provider.name, e)
@@ -505,13 +532,14 @@ def cmd_generate(args: Namespace, ctx: Context) -> None:
                 writer.write(ofile, proxies, proxy_groups, rules, **variables)
                 logger.info('Wrote generated configuration to %s with %d proxies, %d proxy groups, and %d rules', output, len(proxies), len(proxy_groups), len(rules))
             print(f'All providers generated to "{output}"')
-            mgr.set_last_command(
-                name='',
-                target=target,
-                template=template,
-                output=output,
-                variables=variables
-            )
+            if not is_regenerate:
+                mgr.set_last_command(
+                    name='',
+                    target=target,
+                    template=template,
+                    output=output,
+                    variables=variables
+                )
             mgr.do_save()
         except Exception as e:
             logger.error('Failed to generate providers: %s', e)
@@ -520,12 +548,17 @@ def cmd_generate(args: Namespace, ctx: Context) -> None:
 def cmd_regenerate(args: Namespace, ctx: Context) -> None:
     """Handle 'regenerate' subcommand"""
     mgr = ctx.get_provider_manager()
-    last_cmd = mgr.get_last_command()
+    name: str = args.name or ''
+    last_cmd = mgr.get_last_command(name)
     if not last_cmd:
-        logger.error('No previous generate command found')
-        return
-    args = Namespace(**last_cmd)
-    cmd_generate(args, ctx)
+        if name:
+            # Fallback to default config and store under the given name
+            last_cmd = mgr.get_last_command('')
+        if not last_cmd:
+            logger.error('No previous generate command found')
+            return
+    regenerate_args = Namespace(name=name, regenerate=True, **last_cmd)
+    cmd_generate(regenerate_args, ctx)
 
 
 def register_subscribe_commands(subparsers: _SubParsersAction):
@@ -609,4 +642,5 @@ def register_subscribe_commands(subparsers: _SubParsersAction):
     generate_parser.set_defaults(func=cmd_generate)
 
     regenerate_parser = subparsers.add_parser('regenerate', help='Regenerate all providers')
+    regenerate_parser.add_argument('name', nargs='?', default='', help='Config name to regenerate (default: use last generate)')
     regenerate_parser.set_defaults(func=cmd_regenerate)
