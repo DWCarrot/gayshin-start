@@ -557,6 +557,11 @@ def cmd_regenerate(args: Namespace, ctx: Context) -> None:
         if not last_cmd:
             logger.error('No previous generate command found')
             return
+    # Merge variables: last command's variables overridden by -D/--variable if provided
+    variables = dict(last_cmd.get('variables', {}))
+    if hasattr(args, 'variables') and args.variables:
+        variables.update(args.variables)
+    last_cmd = {**last_cmd, 'variables': variables}
     regenerate_args = Namespace(name=name, regenerate=True, **last_cmd)
     cmd_generate(regenerate_args, ctx)
 
@@ -643,4 +648,5 @@ def register_subscribe_commands(subparsers: _SubParsersAction):
 
     regenerate_parser = subparsers.add_parser('regenerate', help='Regenerate all providers')
     regenerate_parser.add_argument('name', nargs='?', default='', help='Config name to regenerate (default: use last generate)')
+    regenerate_parser.add_argument('-D', '--variable', dest='variables', action=VariableAction, default={})
     regenerate_parser.set_defaults(func=cmd_regenerate)
