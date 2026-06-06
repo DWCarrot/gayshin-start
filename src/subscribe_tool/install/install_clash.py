@@ -245,20 +245,30 @@ class ClashInstaller(Installer):
                         )
                         cfg['service_file'] = str(service_file)
 
-                service_timer_template = assets_dir / 'clash.timer'
-                service_timer_file = location_path / 'clash.timer'
-                with open(service_timer_template, 'r') as infile:
-                    with open(service_timer_file, 'w') as outfile:
+                restart_service_template = assets_dir / 'clash-restart.service'
+                restart_service_file = location_path / 'clash-restart.service'
+                with open(restart_service_template, 'r') as infile:
+                    with open(restart_service_file, 'w') as outfile:
                         shutil.copyfileobj(infile, outfile)
-                        cfg['service_timer_file'] = str(service_timer_file)
+                        cfg['service_restart_file'] = str(restart_service_file)
+
+                restart_timer_template = assets_dir / 'clash-restart.timer'
+                restart_timer_file = location_path / 'clash-restart.timer'
+                with open(restart_timer_template, 'r') as infile:
+                    with open(restart_timer_file, 'w') as outfile:
+                        shutil.copyfileobj(infile, outfile)
+                        cfg['service_restart_timer_file'] = str(restart_timer_file)
 
                 print(f"[+] Service file generated at {service_file}")
-                print(f"[+] Service timer file generated at {service_timer_file}")
+                print(f"[+] Restart service file generated at {restart_service_file}")
+                print(f"[+] Restart timer file generated at {restart_timer_file}")
                 print(f"[!] To install systemd service, run:")
                 print(f"    sudo cp {service_file} /usr/local/lib/systemd/system/clash.service")
-                print(f"    sudo cp {service_timer_file} /usr/local/lib/systemd/system/clash.timer")
+                print(f"    sudo cp {restart_service_file} /usr/local/lib/systemd/system/clash-restart.service")
+                print(f"    sudo cp {restart_timer_file} /usr/local/lib/systemd/system/clash-restart.timer")
                 print(f"    sudo systemctl daemon-reload")
                 print(f"    sudo systemctl enable clash.service")
+                print(f"    sudo systemctl enable clash-restart.timer")
             
             print(f"\n[+] Clash installation completed successfully!")
             
@@ -286,12 +296,13 @@ class ClashInstaller(Installer):
             service_file = cfg.get('service_file')
             if service_file and Path(service_file).exists():
                 print(f"[!] To remove systemd service, run:")
-                print(f"    sudo systemctl stop clash.timer")
+                print(f"    sudo systemctl stop clash-restart.timer")
                 print(f"    sudo systemctl stop clash.service")
-                print(f"    sudo systemctl disable clash.timer")
+                print(f"    sudo systemctl disable clash-restart.timer")
                 print(f"    sudo systemctl disable clash.service")
                 print(f"    sudo rm /usr/local/lib/systemd/system/clash.service")
-                print(f"    sudo rm /usr/local/lib/systemd/system/clash.timer")
+                print(f"    sudo rm /usr/local/lib/systemd/system/clash-restart.service")
+                print(f"    sudo rm /usr/local/lib/systemd/system/clash-restart.timer")
                 print(f"    sudo systemctl daemon-reload")
             
             # # Remove installation directory

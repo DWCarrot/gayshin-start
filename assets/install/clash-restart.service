@@ -1,0 +1,6 @@
+[Unit]
+Description=Restart Clash Service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart clash.service

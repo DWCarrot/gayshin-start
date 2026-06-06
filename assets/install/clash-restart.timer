@@ -2,8 +2,9 @@
 Description=Restart Clash Service daily
 
 [Timer]
-OnCalendar=*-*-* 8,20:00:00
+OnCalendar=*-*-* 20:00:00
 Persistent=true
+Unit=clash-restart.service
 
 [Install]
 WantedBy=timers.target
